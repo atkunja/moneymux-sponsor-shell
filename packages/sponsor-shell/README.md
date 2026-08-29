@@ -17,6 +17,7 @@ Then connect the terminal to your MoneyMux developer account. For staging:
 sponsor-shell login --api-base-url https://staging.moneymux.com
 sponsor-shell link --api-base-url https://staging.moneymux.com --device-id <device_id> --device-token <token>
 sponsor-shell status
+sponsor-shell doctor
 sponsor-shell
 ```
 
@@ -36,9 +37,13 @@ sponsor-shell bash
 - macOS arm64 and x64
 - Linux arm64 and x64
 
-`tmux` is required. If it is missing, Sponsor Shell can install it using a
-supported macOS or Linux package manager. Set `SPONSOR_SHELL_INSTALL_TMUX=0`
-to require a manual installation instead.
+`tmux` is required. If it is missing, Sponsor Shell stops with manual
+installation guidance. Run `sponsor-shell install-tmux` only when you explicitly
+want Sponsor Shell to invoke Homebrew or a supported Linux package manager.
+
+`sponsor-shell unlink` removes locally stored device credentials while
+preserving the configured API URL. `sponsor-shell doctor` reports local
+readiness without printing credential values.
 
 ## Privacy
 

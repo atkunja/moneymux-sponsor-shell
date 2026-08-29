@@ -16,6 +16,7 @@ Describe the user-visible behavior and why this change is needed.
 - [ ] `cargo fmt --check`
 - [ ] `cargo clippy --locked --all-targets -- -D warnings`
 - [ ] `cargo test --locked`
+- [ ] `cargo deny check advisories bans licenses sources`
 - [ ] `npm test --prefix packages/sponsor-shell`
 - [ ] I added or updated tests for changed behavior.
 

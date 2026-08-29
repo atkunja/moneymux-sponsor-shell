@@ -36,6 +36,7 @@ connection:
 
 ```sh
 sponsor-shell status
+sponsor-shell doctor
 sponsor-shell
 ```
 
@@ -48,9 +49,17 @@ sponsor-shell bash
 ```
 
 Sponsor Shell supports macOS and Linux on arm64 and x64. `tmux` is required.
-When it is missing, the current client attempts to install it through Homebrew
-or a supported Linux package manager. Set `SPONSOR_SHELL_INSTALL_TMUX=0` to
-disable automatic dependency installation.
+When it is missing, normal execution stops with installation guidance. Install
+it yourself, or explicitly authorize a supported package manager with:
+
+```sh
+sponsor-shell install-tmux
+```
+
+Use `sponsor-shell unlink` to remove locally stored device credentials without
+changing the selected API URL. `sponsor-shell --help` lists every management
+command and `sponsor-shell doctor` reports local readiness without printing
+credential values.
 
 ## What the client sends
 
@@ -66,12 +75,15 @@ disclosure and local storage details.
 
 ## Build and test from source
 
-Prerequisites: Rust 1.96.1+, Node.js 18+, and `tmux` for interactive use.
+Prerequisites: Rust 1.96.1+, Node.js 18+, `cargo-deny` 0.20.2, and `tmux` for
+interactive use. Install the policy tool once with `cargo install cargo-deny
+--version 0.20.2 --locked`.
 
 ```sh
 cargo fmt --check
 cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
+cargo deny check advisories bans licenses sources
 npm test --prefix packages/sponsor-shell
 cargo build --locked --release -p sponsor-shell
 ```
@@ -92,8 +104,10 @@ Release instructions and verification commands are in
 
 ## Security and contributions
 
-Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. Pull
-requests are welcome; development guidance is in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+Please read [SECURITY.md](SECURITY.md) before reporting a vulnerability. The
+client trust boundaries and residual risks are documented in
+[THREAT_MODEL.md](THREAT_MODEL.md). Pull requests are welcome; development
+guidance is in [CONTRIBUTING.md](CONTRIBUTING.md), and release-to-release changes
+are recorded in [CHANGELOG.md](CHANGELOG.md).
 
 Sponsor Shell is distributed under the [MIT License](LICENSE).
