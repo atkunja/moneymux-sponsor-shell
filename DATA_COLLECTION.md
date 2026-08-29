@@ -14,10 +14,10 @@ The client uses local `tmux` activity timestamps to decide whether the user is
 idle and whether an opt-in loading-state placement should expand. These activity
 timestamps are not terminal contents.
 
-If `tmux` is unavailable, the current client attempts to install it using
-Homebrew on macOS or a detected package manager on Linux. Linux installation
-may invoke `sudo`. Set `SPONSOR_SHELL_INSTALL_TMUX=0` to disable this behavior
-and install `tmux` yourself.
+If `tmux` is unavailable, normal Sponsor Shell commands stop and print manual
+installation guidance. Sponsor Shell invokes Homebrew or a detected Linux
+package manager only after the user explicitly runs `sponsor-shell
+install-tmux`. That explicit command may invoke `sudo` on Linux.
 
 ## Local storage
 
@@ -30,6 +30,11 @@ By default the client stores its configuration at:
 The file contains the configured API base URL, device ID, and device bearer
 token. On Unix, Sponsor Shell creates and maintains the file with mode `0600`.
 `SPONSOR_SHELL_CONFIG` can override its location.
+
+`sponsor-shell unlink` (or `logout`) removes the stored device ID and bearer
+token while preserving the selected API URL. Credential environment variables
+cannot be removed from a parent shell, so the command names any active override
+variables without printing their values.
 
 For local creative development, Sponsor Shell may read
 `.sponsor-shell/ad.json` in the current directory. `SPONSOR_SHELL_AD_FILE` can
@@ -44,8 +49,16 @@ default browser. API requests are sent to the base URL selected with
 `SPONSOR_SHELL_API_BASE_URL`.
 
 Every authenticated API request includes the device bearer token in the
-`Authorization` header. The client warns before using cleartext HTTP for a
-non-local API URL.
+`Authorization` header. Remote API URLs must use HTTPS. Plain HTTP is accepted
+only for loopback IP addresses, `localhost`, and `.localhost` development
+domains. Embedded URL credentials, query strings, fragments, and non-HTTP
+schemes are rejected before an authorization header is created.
+
+`sponsor-shell doctor` performs local-only diagnostics. It reports the client
+version, operating-system/CPU pair, configured API URL and transport state,
+whether config and device linking are valid, `tmux` availability, terminal
+interactivity, and the names of active credential override variables. It does
+not print credential values.
 
 ### Terminal session
 
