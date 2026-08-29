@@ -310,6 +310,9 @@ fn run() -> Result<i32> {
     if args.first().is_some_and(|arg| arg == "status") {
         return run_status();
     }
+    if args.first().is_some_and(|arg| arg == "doctor") {
+        return run_doctor(&args[1..]);
+    }
     if args.first().is_some_and(|arg| arg == "install-tmux") {
         return run_install_tmux(&args[1..]);
     }
@@ -602,6 +605,98 @@ fn run_status() -> Result<i32> {
         }
     );
     Ok(0)
+}
+
+struct DoctorSnapshot {
+    api_base_url: String,
+    api_transport: &'static str,
+    config_state: &'static str,
+    device_state: &'static str,
+    tmux_available: bool,
+    interactive: bool,
+    credential_overrides: Vec<&'static str>,
+}
+
+fn run_doctor(args: &[String]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("sponsor-shell doctor");
+        println!("prints local diagnostics without displaying device credential values");
+        return Ok(0);
+    }
+    if let Some(option) = args.first() {
+        anyhow::bail!("unknown doctor option: {option}");
+    }
+
+    let snapshot = collect_doctor_snapshot();
+    for line in doctor_lines(&snapshot) {
+        println!("{line}");
+    }
+    let ready = snapshot.api_transport != "invalid" && snapshot.tmux_available;
+    Ok(if ready { 0 } else { 1 })
+}
+
+fn collect_doctor_snapshot() -> DoctorSnapshot {
+    let api_base_url = platform_base_url();
+    let api_transport = match validate_api_base_url(&api_base_url) {
+        Ok(_) if api_base_url.trim().starts_with("https://") => "https",
+        Ok(_) => "local-http",
+        Err(_) => "invalid",
+    };
+    let path = config_path();
+    let config_state = if !path.exists() {
+        "missing"
+    } else if load_cli_config().is_ok() {
+        "valid"
+    } else {
+        "invalid"
+    };
+    let device_state = match (device_id().is_some(), device_token().is_some()) {
+        (true, true) => "linked",
+        (false, false) => "not-linked",
+        _ => "incomplete",
+    };
+
+    DoctorSnapshot {
+        api_base_url,
+        api_transport,
+        config_state,
+        device_state,
+        tmux_available: tmux_available(),
+        interactive: outer_terminal_is_interactive(),
+        credential_overrides: active_credential_override_names(),
+    }
+}
+
+fn doctor_lines(snapshot: &DoctorSnapshot) -> Vec<String> {
+    vec![
+        "sponsor-shell doctor".to_string(),
+        format!("version: {}", env!("CARGO_PKG_VERSION")),
+        format!("platform: {}/{}", env::consts::OS, env::consts::ARCH),
+        format!("api: {}", snapshot.api_base_url),
+        format!("api transport: {}", snapshot.api_transport),
+        format!("config: {}", snapshot.config_state),
+        format!("device: {}", snapshot.device_state),
+        format!(
+            "tmux: {}",
+            if snapshot.tmux_available {
+                "available"
+            } else {
+                "missing"
+            }
+        ),
+        format!(
+            "interactive terminal: {}",
+            if snapshot.interactive { "yes" } else { "no" }
+        ),
+        format!(
+            "credential environment overrides: {}",
+            if snapshot.credential_overrides.is_empty() {
+                "none".to_string()
+            } else {
+                snapshot.credential_overrides.join(", ")
+            }
+        ),
+    ]
 }
 
 fn config_path() -> PathBuf {
@@ -2621,6 +2716,25 @@ mod tests {
         let serialized = serde_json::to_string(&config).unwrap();
         assert!(!serialized.contains("ssdev_secret"));
         assert!(!serialized.contains("device_1"));
+    }
+
+    #[test]
+    fn doctor_output_names_credential_sources_without_values() {
+        let snapshot = DoctorSnapshot {
+            api_base_url: "https://staging.moneymux.com".to_string(),
+            api_transport: "https",
+            config_state: "valid",
+            device_state: "linked",
+            tmux_available: true,
+            interactive: true,
+            credential_overrides: vec![SPONSOR_DEVICE_TOKEN_ENV],
+        };
+        let output = doctor_lines(&snapshot).join("\n");
+
+        assert!(output.contains(SPONSOR_DEVICE_TOKEN_ENV));
+        assert!(output.contains("device: linked"));
+        assert!(!output.contains("ssdev_secret"));
+        assert!(!output.contains("config.json"));
     }
 
     #[cfg(unix)]
