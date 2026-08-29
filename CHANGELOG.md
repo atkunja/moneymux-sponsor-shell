@@ -7,11 +7,19 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 ### Changed
 
 - Updated the terminal event and rendering backend from crossterm 0.27 to 0.29.
+- Upgraded the Sponsor Shell HTTP client from ureq 2 to ureq 3 while
+  preserving the two-second request deadline and non-success status handling.
+- Reuse one configured HTTP agent so API calls can share connection state.
 
 ### Fixed
 
 - Key-release events are ignored so enhanced terminals cannot forward a
   duplicate `Ctrl-C` into the wrapped application.
+
+### Testing
+
+- Added loopback transport coverage for JSON request bodies, bearer
+  authorization, response bodies, and non-success API statuses.
 
 ## 0.1.1 - 2026-08-29
 
