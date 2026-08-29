@@ -297,6 +297,12 @@ fn run() -> Result<i32> {
     }
     if args
         .first()
+        .is_some_and(|arg| arg == "unlink" || arg == "logout")
+    {
+        return run_unlink(&args[1..]);
+    }
+    if args
+        .first()
         .is_some_and(|arg| arg == "config" || arg == "configure")
     {
         return run_configure(&args[1..]);
@@ -445,6 +451,56 @@ fn run_link(args: &[String]) -> Result<i32> {
 fn print_link_help() {
     println!("sponsor-shell link --device-id <device_id> --device-token <ssdev_token>");
     println!("optional: --api-base-url https://sponsor-shell.example.com");
+}
+
+fn run_unlink(args: &[String]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("sponsor-shell unlink");
+        println!("removes the stored device ID and token while preserving the configured API URL");
+        return Ok(0);
+    }
+    if let Some(option) = args.first() {
+        anyhow::bail!("unknown unlink option: {option}");
+    }
+
+    let path = config_path();
+    let mut removed = false;
+    if path.exists() {
+        let mut config = load_cli_config()?;
+        removed = clear_device_credentials(&mut config);
+        if removed {
+            save_cli_config(&config)?;
+        }
+    }
+
+    if removed {
+        println!("sponsor-shell unlinked");
+        println!("removed stored device credentials from {}", path.display());
+    } else {
+        println!("sponsor-shell is already unlinked");
+    }
+    let overrides = active_credential_override_names();
+    if !overrides.is_empty() {
+        println!(
+            "environment overrides remain active: {}",
+            overrides.join(", ")
+        );
+    }
+    Ok(0)
+}
+
+fn clear_device_credentials(config: &mut CliConfig) -> bool {
+    let had_credentials = config.device_id.is_some() || config.device_token.is_some();
+    config.device_id = None;
+    config.device_token = None;
+    had_credentials
+}
+
+fn active_credential_override_names() -> Vec<&'static str> {
+    [SPONSOR_DEVICE_ID_ENV, SPONSOR_DEVICE_TOKEN_ENV]
+        .into_iter()
+        .filter(|name| env::var(name).is_ok_and(|value| !value.trim().is_empty()))
+        .collect()
 }
 
 fn validate_api_base_url(value: &str) -> Result<String> {
@@ -2543,6 +2599,28 @@ mod tests {
         assert!(validate_api_base_url("https://moneymux.com?target=evil").is_err());
         assert!(validate_api_base_url("https://moneymux.com#fragment").is_err());
         assert!(validate_api_base_url("file:///tmp/fake-api").is_err());
+    }
+
+    #[test]
+    fn unlink_removes_credentials_but_preserves_the_api_url() {
+        let mut config = CliConfig {
+            api_base_url: Some("https://staging.moneymux.com".to_string()),
+            device_id: Some("device_1".to_string()),
+            device_token: Some("ssdev_secret".to_string()),
+        };
+
+        assert!(clear_device_credentials(&mut config));
+        assert_eq!(
+            config.api_base_url.as_deref(),
+            Some("https://staging.moneymux.com")
+        );
+        assert!(config.device_id.is_none());
+        assert!(config.device_token.is_none());
+        assert!(!clear_device_credentials(&mut config));
+
+        let serialized = serde_json::to_string(&config).unwrap();
+        assert!(!serialized.contains("ssdev_secret"));
+        assert!(!serialized.contains("device_1"));
     }
 
     #[cfg(unix)]
