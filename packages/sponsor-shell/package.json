@@ -16,6 +16,7 @@
   ],
   "scripts": {
     "build:native": "sh scripts/build-native.sh",
+    "release:check": "node scripts/check-release.mjs",
     "test": "node --test",
     "prepack": "node scripts/validate-package.mjs"
   },
