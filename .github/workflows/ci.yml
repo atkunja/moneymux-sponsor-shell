@@ -35,6 +35,7 @@ jobs:
         with:
           node-version: 22
       - run: npm test --prefix packages/sponsor-shell
+      - run: npm run release:check --prefix packages/sponsor-shell
 
   dependency-policy:
     name: Dependency policy

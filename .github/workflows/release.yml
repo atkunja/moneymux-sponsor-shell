@@ -26,14 +26,14 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-      - name: Verify tag, branch, and package versions
+      - name: Verify tag points at main
         run: |
           git fetch origin main
           test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
-          RUST_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/sponsor-shell/Cargo.toml | head -1)
-          NPM_VERSION=$(node -p "require('./packages/sponsor-shell/package.json').version")
-          test "$RUST_VERSION" = "$NPM_VERSION"
-          test "$GITHUB_REF_NAME" = "v$NPM_VERSION"
+      - name: Verify release metadata
+        env:
+          EXPECTED_RELEASE_TAG: ${{ github.ref_name }}
+        run: npm run release:check --prefix packages/sponsor-shell
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
