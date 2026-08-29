@@ -4,6 +4,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.2 - 2026-08-29
+
 ### Changed
 
 - Updated the terminal event and rendering backend from crossterm 0.27 to 0.29.
