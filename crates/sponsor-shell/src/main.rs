@@ -303,6 +303,9 @@ fn run() -> Result<i32> {
     if args.first().is_some_and(|arg| arg == "status") {
         return run_status();
     }
+    if args.first().is_some_and(|arg| arg == "install-tmux") {
+        return run_install_tmux(&args[1..]);
+    }
 
     let command = args.first().cloned().unwrap_or_else(default_shell_command);
     let command_args = if args.is_empty() {
@@ -1735,12 +1738,12 @@ fn ensure_tmux_available() -> Result<()> {
         return Ok(());
     }
 
-    install_tmux()?;
-    if tmux_available() {
-        Ok(())
-    } else {
-        anyhow::bail!("tmux installation completed, but `tmux -V` still failed")
-    }
+    anyhow::bail!(tmux_missing_message())
+}
+
+fn tmux_missing_message() -> &'static str {
+    "tmux is required for Sponsor Shell and was not found. Install tmux manually, or run \
+     `sponsor-shell install-tmux` to explicitly let Sponsor Shell invoke a supported package manager."
 }
 
 fn tmux_available() -> bool {
@@ -1750,17 +1753,32 @@ fn tmux_available() -> bool {
         .is_ok_and(|output| output.status.success())
 }
 
-fn install_tmux() -> Result<()> {
-    // Documented opt-out: skip dependency installation entirely.
-    if env::var("SPONSOR_SHELL_INSTALL_TMUX").is_ok_and(|value| value == "0") {
-        anyhow::bail!(
-            "tmux is required for sponsor-shell split-pane mode, and automatic \
-             installation is disabled (SPONSOR_SHELL_INSTALL_TMUX=0). Install tmux and retry."
-        );
+fn run_install_tmux(args: &[String]) -> Result<i32> {
+    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+        println!("sponsor-shell install-tmux");
+        println!("explicitly installs tmux using Homebrew or a supported Linux package manager");
+        return Ok(0);
+    }
+    if let Some(option) = args.first() {
+        anyhow::bail!("unknown install-tmux option: {option}");
+    }
+    if tmux_available() {
+        println!("tmux is already installed");
+        return Ok(0);
     }
 
+    install_tmux()?;
+    if tmux_available() {
+        println!("tmux installed successfully");
+        Ok(0)
+    } else {
+        anyhow::bail!("tmux installation completed, but `tmux -V` still failed")
+    }
+}
+
+fn install_tmux() -> Result<()> {
     if cfg!(target_os = "macos") {
-        eprintln!("sponsor-shell: tmux not found; installing tmux with Homebrew...");
+        eprintln!("sponsor-shell: explicitly installing tmux with Homebrew...");
         let status = Command::new("brew")
             .args(["install", "tmux"])
             .status()
@@ -1798,7 +1816,7 @@ fn install_tmux_linux() -> Result<()> {
             continue;
         }
         attempted = true;
-        eprintln!("sponsor-shell: tmux not found; installing tmux with {manager}...");
+        eprintln!("sponsor-shell: explicitly installing tmux with {manager}...");
         let mut command = if use_sudo {
             let mut c = Command::new("sudo");
             c.arg(manager);
@@ -2781,6 +2799,15 @@ mod tests {
         assert_eq!(parse_positive_seconds(" 15 "), Some(15));
         assert_eq!(parse_positive_seconds("0"), None);
         assert_eq!(parse_positive_seconds("fast"), None);
+    }
+
+    #[test]
+    fn missing_tmux_requires_an_explicit_install_command() {
+        let message = tmux_missing_message();
+
+        assert!(message.contains("sponsor-shell install-tmux"));
+        assert!(message.contains("explicitly"));
+        assert!(!message.contains("automatically"));
     }
 
     #[test]
