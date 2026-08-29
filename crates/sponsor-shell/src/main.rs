@@ -12,7 +12,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 use crossterm::cursor;
-use crossterm::event::{self, KeyCode, KeyEvent, KeyModifiers, MouseEventKind};
+use crossterm::event::{self, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEventKind};
 use crossterm::style;
 use crossterm::terminal::{self, disable_raw_mode, enable_raw_mode, ClearType};
 use crossterm::{execute, queue};
@@ -1923,6 +1923,10 @@ fn client_idle_from_activity_output(output: &str, now_epoch_seconds: u64) -> Opt
 }
 
 fn key_to_tmux_send_key(key: KeyEvent) -> Option<&'static str> {
+    if !matches!(key.kind, KeyEventKind::Press | KeyEventKind::Repeat) {
+        return None;
+    }
+
     match key.code {
         KeyCode::Char('c') | KeyCode::Char('C')
             if key.modifiers.contains(KeyModifiers::CONTROL) =>
@@ -3241,6 +3245,22 @@ mod tests {
         )));
         assert!(!is_mouse_click(MouseEventKind::Moved));
         assert!(!is_mouse_click(MouseEventKind::ScrollDown));
+    }
+
+    #[test]
+    fn control_c_forwards_press_and_repeat_but_not_release_events() {
+        let control_c =
+            |kind| KeyEvent::new_with_kind(KeyCode::Char('c'), KeyModifiers::CONTROL, kind);
+
+        assert_eq!(
+            key_to_tmux_send_key(control_c(KeyEventKind::Press)),
+            Some("C-c")
+        );
+        assert_eq!(
+            key_to_tmux_send_key(control_c(KeyEventKind::Repeat)),
+            Some("C-c")
+        );
+        assert_eq!(key_to_tmux_send_key(control_c(KeyEventKind::Release)), None);
     }
 
     #[test]
