@@ -1,0 +1,138 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: 1.96.1
+          components: rustfmt, clippy
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Verify tag, branch, and package versions
+        run: |
+          git fetch origin main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
+          RUST_VERSION=$(sed -n 's/^version = "\([^"]*\)"/\1/p' crates/sponsor-shell/Cargo.toml | head -1)
+          NPM_VERSION=$(node -p "require('./packages/sponsor-shell/package.json').version")
+          test "$RUST_VERSION" = "$NPM_VERSION"
+          test "$GITHUB_REF_NAME" = "v$NPM_VERSION"
+      - run: cargo fmt --check
+      - run: cargo clippy --locked --all-targets -- -D warnings
+      - run: cargo test --locked
+      - run: npm test --prefix packages/sponsor-shell
+
+  build:
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            builder: cargo
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            builder: cargo
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            builder: cargo
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            builder: cross
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+        with:
+          toolchain: 1.96.1
+          targets: ${{ matrix.target }}
+      - if: matrix.builder == 'cross'
+        run: cargo install cross --locked
+      - if: matrix.builder == 'cargo'
+        run: cargo build --locked --release -p sponsor-shell --target ${{ matrix.target }}
+      - if: matrix.builder == 'cross'
+        run: cross build --locked --release -p sponsor-shell --target ${{ matrix.target }}
+      - name: Stage native executable
+        run: |
+          cp target/${{ matrix.target }}/release/sponsor-shell sponsor-shell-${{ matrix.target }}
+          chmod 755 sponsor-shell-${{ matrix.target }}
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sponsor-shell-${{ matrix.target }}
+          path: sponsor-shell-${{ matrix.target }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: packages/sponsor-shell/native
+          merge-multiple: true
+      - name: Validate assembled npm package
+        run: |
+          chmod 755 packages/sponsor-shell/native/sponsor-shell-*
+          node packages/sponsor-shell/scripts/validate-package.mjs
+      - name: Pack npm artifact
+        working-directory: packages/sponsor-shell
+        run: npm pack
+      - name: Create checksums
+        run: |
+          cd packages/sponsor-shell/native
+          sha256sum sponsor-shell-* > ../../../checksums.txt
+          cd ..
+          sha256sum moneymux-sponsor-shell-*.tgz >> ../../checksums.txt
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign checksums with GitHub OIDC
+        run: |
+          cosign sign-blob --yes --bundle checksums.sigstore.json checksums.txt
+      - name: Publish npm package with provenance
+        working-directory: packages/sponsor-shell
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if npm view "@moneymux/sponsor-shell@$VERSION" version >/dev/null 2>&1; then
+            echo "@moneymux/sponsor-shell@$VERSION is already published; leaving it immutable."
+          else
+            npm publish --access public --provenance
+          fi
+      - name: Publish immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            packages/sponsor-shell/native/sponsor-shell-* \
+            packages/sponsor-shell/moneymux-sponsor-shell-*.tgz \
+            checksums.txt checksums.sigstore.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            --verify-tag

@@ -1,0 +1,4 @@
+[workspace]
+members = ["crates/sponsor-shell"]
+default-members = ["crates/sponsor-shell"]
+resolver = "2"

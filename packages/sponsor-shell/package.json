@@ -1,0 +1,52 @@
+{
+  "name": "@moneymux/sponsor-shell",
+  "version": "0.1.0",
+  "description": "MoneyMux's native sponsored terminal shell for developer tools.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "sponsor-shell": "bin/sponsor-shell.mjs"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "native",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build:native": "sh scripts/build-native.sh",
+    "test": "node --test",
+    "prepack": "node scripts/validate-package.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "arm64",
+    "x64"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/atkunja/moneymux-sponsor-shell.git",
+    "directory": "packages/sponsor-shell"
+  },
+  "homepage": "https://moneymux.com",
+  "bugs": {
+    "url": "https://github.com/atkunja/moneymux-sponsor-shell/issues"
+  },
+  "keywords": [
+    "moneymux",
+    "terminal",
+    "cli",
+    "tmux",
+    "developer-tools"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

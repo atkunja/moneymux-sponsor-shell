@@ -1,0 +1,6 @@
+/target/
+/node_modules/
+/packages/sponsor-shell/native/
+*.tgz
+*.tar.gz
+.DS_Store
