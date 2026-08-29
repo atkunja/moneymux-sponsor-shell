@@ -21,7 +21,8 @@ sponsor-shell doctor
 sponsor-shell
 ```
 
-Register the terminal in the authenticated Developer workspace before running
+`login` stores the API URL and opens the MoneyMux developer account flow in the
+default browser. Register the terminal in the authenticated Developer workspace before running
 `link`. The current public package is intended for the MoneyMux staging API;
 production promotion will be documented separately when it is enabled.
 

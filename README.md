@@ -30,6 +30,10 @@ npm install --global @moneymux/sponsor-shell@0.1.2
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
+`login` stores the selected API URL and opens the role-specific MoneyMux account
+flow at `/app`, so a new developer can create an account and a returning
+developer can switch to sign-in without landing on the marketing homepage.
+
 After registering a terminal in the MoneyMux Developer workspace, run the
 one-time `sponsor-shell link` command shown by the dashboard, then verify the
 connection:
