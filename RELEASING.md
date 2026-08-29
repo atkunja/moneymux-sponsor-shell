@@ -57,7 +57,7 @@ on a repository checkout:
 ```sh
 npm view @moneymux/sponsor-shell@0.1.1 version dist.integrity repository.url
 npm exec --yes --package=@moneymux/sponsor-shell@0.1.1 -- sponsor-shell --version
-MONEYMUX_API_BASE_URL=https://staging.moneymux.com \
+SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
   npm exec --yes --package=@moneymux/sponsor-shell@0.1.1 -- sponsor-shell doctor
 ```
 
