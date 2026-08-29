@@ -1,0 +1,37 @@
+name: Feature request
+description: Propose a focused improvement to the public terminal client or npm launcher.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem should Sponsor Shell solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the smallest useful behavior and its terminal UX.
+    validations:
+      required: true
+  - type: dropdown
+    id: trust_boundary
+    attributes:
+      label: Does this change affect the trust boundary?
+      options:
+        - No
+        - Network requests
+        - Local storage
+        - Subprocess execution
+        - Credential handling
+        - Terminal rendering
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered

@@ -1,0 +1,54 @@
+name: Bug report
+description: Report reproducible Sponsor Shell behavior that is incorrect or unsafe.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Do not paste device tokens, account credentials, private terminal output, or customer data.
+  - type: input
+    id: version
+    attributes:
+      label: Sponsor Shell version
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS arm64
+        - macOS x64
+        - Linux arm64
+        - Linux x64
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include sanitized commands and steps. Remove tokens, private paths, and terminal contents.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: Observed behavior
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, device tokens, customer data, and private terminal contents.
+          required: true
+        - label: This report does not contain an exploitable vulnerability that should be disclosed privately.
+          required: true
