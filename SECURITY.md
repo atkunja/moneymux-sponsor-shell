@@ -29,7 +29,11 @@ a fix and release, and credit the reporter when requested and appropriate.
 ## Security properties
 
 - Device tokens are stored with owner-only permissions on Unix.
-- The client warns before transmitting a device token over non-local HTTP.
+- Remote API URLs require HTTPS; cleartext HTTP is restricted to local
+  development hosts.
+- Normal execution never invokes a package manager. Dependency installation is
+  available only through the explicit `sponsor-shell install-tmux` command.
+- `doctor` and `unlink` identify credential sources without printing values.
 - Remote creative text is stripped of terminal control and bidirectional
   override characters before rendering.
 - Only schema-declared creative links become terminal hyperlinks.
@@ -39,3 +43,6 @@ a fix and release, and credit the reporter when requested and appropriate.
 Open source improves auditability but is not, by itself, proof that a downloaded
 binary matches the source. Verify the release checksum, signature, and npm
 provenance before installing in a sensitive environment.
+
+The client assets, boundaries, abuse cases, mitigations, and residual risks are
+documented in [THREAT_MODEL.md](THREAT_MODEL.md).
