@@ -1,6 +1,6 @@
 {
   "name": "@moneymux/sponsor-shell",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MoneyMux's native sponsored terminal shell for developer tools.",
   "license": "MIT",
   "type": "module",
