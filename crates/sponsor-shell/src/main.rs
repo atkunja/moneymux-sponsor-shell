@@ -2428,6 +2428,15 @@ fn clip_ascii(text: &str, width: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_process_environment() -> MutexGuard<'static, ()> {
+        ENV_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
 
     #[test]
     fn ad_expands_on_long_user_idle_regardless_of_mode() {
@@ -2503,6 +2512,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saved_config_is_owner_only() {
+        let _environment = lock_process_environment();
         use std::os::unix::fs::PermissionsExt;
         let dir = env::temp_dir().join(format!("sponsor-shell-cfgtest-{}", std::process::id()));
         let _ = fs::create_dir_all(&dir);
@@ -2699,6 +2709,7 @@ mod tests {
 
     #[test]
     fn remote_ad_decision_body_includes_terminal_session_when_available() {
+        let _environment = lock_process_environment();
         let body = remote_ad_decision_body(
             "device_1",
             Layout::new(120, 40),
@@ -2725,6 +2736,7 @@ mod tests {
 
     #[test]
     fn ci_environments_are_never_interactive() {
+        let _environment = lock_process_environment();
         use std::io::IsTerminal;
         // Some CI runners allocate a PTY, so a TTY check alone is not enough:
         // an ad in a CI log is still an ad nobody saw.
@@ -2816,6 +2828,7 @@ mod tests {
 
     #[test]
     fn ad_pane_obeys_the_outer_verdict_over_its_own_pty() {
+        let _environment = lock_process_environment();
         // Inside a real pane stdout IS a terminal, so a local check would always
         // say "interactive". The injected verdict has to win.
         let previous = env::var(SPONSOR_INTERACTIVE_ENV).ok();
@@ -2831,6 +2844,7 @@ mod tests {
 
     #[test]
     fn ci_markers_beyond_plain_ci_are_detected() {
+        let _environment = lock_process_environment();
         let previous = env::var("GITHUB_ACTIONS").ok();
         env::set_var("GITHUB_ACTIONS", "true");
         assert!(running_in_ci(), "GITHUB_ACTIONS alone must count as CI");
