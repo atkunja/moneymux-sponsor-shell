@@ -285,6 +285,20 @@ fn main() {
 
 fn run() -> Result<i32> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--help" || arg == "-h" || arg == "help")
+    {
+        print_help();
+        return Ok(0);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "--version" || arg == "-V" || arg == "version")
+    {
+        println!("sponsor-shell {}", env!("CARGO_PKG_VERSION"));
+        return Ok(0);
+    }
     if args.first().is_some_and(|arg| arg == AD_PANE_ARG) {
         run_sponsor_pane()?;
         return Ok(0);
@@ -325,6 +339,33 @@ fn run() -> Result<i32> {
     };
 
     run_tmux_shell(&command, &command_args)
+}
+
+fn print_help() {
+    for line in help_lines() {
+        println!("{line}");
+    }
+}
+
+fn help_lines() -> &'static [&'static str] {
+    &[
+        "Sponsor Shell — transparent sponsored terminal inventory",
+        "",
+        "Usage:",
+        "  sponsor-shell [command-to-wrap] [arguments...]",
+        "  sponsor-shell <management-command>",
+        "",
+        "Management commands:",
+        "  login          Open the MoneyMux developer onboarding page",
+        "  link           Store a terminal device ID and token",
+        "  unlink         Remove stored device credentials (alias: logout)",
+        "  configure      Set the MoneyMux API base URL",
+        "  status         Show the current local configuration",
+        "  doctor         Run secret-free local diagnostics",
+        "  install-tmux   Explicitly install the required tmux dependency",
+        "  help           Show this help",
+        "  version        Show the installed Sponsor Shell version",
+    ]
 }
 
 fn default_shell_command() -> String {
@@ -3018,6 +3059,24 @@ mod tests {
         assert!(message.contains("sponsor-shell install-tmux"));
         assert!(message.contains("explicitly"));
         assert!(!message.contains("automatically"));
+    }
+
+    #[test]
+    fn global_help_lists_every_management_command() {
+        let help = help_lines().join("\n");
+
+        for command in [
+            "login",
+            "link",
+            "unlink",
+            "configure",
+            "status",
+            "doctor",
+            "install-tmux",
+            "version",
+        ] {
+            assert!(help.contains(command), "help omitted {command}");
+        }
     }
 
     #[test]
