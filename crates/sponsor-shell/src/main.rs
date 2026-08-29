@@ -2664,6 +2664,8 @@ fn clip_ascii(text: &str, width: usize) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Read;
+    use std::net::TcpListener;
     use std::sync::{Mutex, MutexGuard};
 
     static ENV_LOCK: Mutex<()> = Mutex::new(());
@@ -2672,6 +2674,51 @@ mod tests {
         ENV_LOCK
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn serve_one_http_request(listener: TcpListener, status: &str, response_body: &str) -> String {
+        let (mut stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(2)))
+            .unwrap();
+
+        let mut request = Vec::new();
+        let mut expected_length = None;
+        loop {
+            let mut chunk = [0_u8; 1024];
+            let count = stream.read(&mut chunk).unwrap();
+            if count == 0 {
+                break;
+            }
+            request.extend_from_slice(&chunk[..count]);
+
+            if expected_length.is_none() {
+                if let Some(header_end) = request.windows(4).position(|part| part == b"\r\n\r\n") {
+                    let headers = String::from_utf8_lossy(&request[..header_end]);
+                    let content_length = headers
+                        .lines()
+                        .find_map(|line| {
+                            let (name, value) = line.split_once(':')?;
+                            name.eq_ignore_ascii_case("content-length")
+                                .then(|| value.trim().parse::<usize>().unwrap())
+                        })
+                        .unwrap_or(0);
+                    expected_length = Some(header_end + 4 + content_length);
+                }
+            }
+
+            if expected_length.is_some_and(|length| request.len() >= length) {
+                break;
+            }
+            assert!(request.len() < 64 * 1024, "test request exceeded 64 KiB");
+        }
+
+        let response = format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
+            response_body.len()
+        );
+        stream.write_all(response.as_bytes()).unwrap();
+        String::from_utf8(request).unwrap()
     }
 
     #[test]
@@ -2753,6 +2800,49 @@ mod tests {
         assert!(validate_api_base_url("https://moneymux.com?target=evil").is_err());
         assert!(validate_api_base_url("https://moneymux.com#fragment").is_err());
         assert!(validate_api_base_url("file:///tmp/fake-api").is_err());
+    }
+
+    #[test]
+    fn api_post_sends_json_and_bearer_credentials() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://{}/api/events/impression",
+            listener.local_addr().unwrap()
+        );
+        let server =
+            thread::spawn(move || serve_one_http_request(listener, "200 OK", r#"{"ok":true}"#));
+
+        let response = api_post_with_token(
+            &url,
+            r#"{"adDecisionId":"decision-1"}"#,
+            Some("ssdev_test_token"),
+        )
+        .unwrap();
+        let request = server.join().unwrap();
+        let request_lowercase = request.to_ascii_lowercase();
+
+        assert_eq!(response, r#"{"ok":true}"#);
+        assert!(request.starts_with("POST /api/events/impression HTTP/1.1\r\n"));
+        assert!(request_lowercase.contains("\r\ncontent-type: application/json\r\n"));
+        assert!(request_lowercase.contains("\r\nauthorization: bearer ssdev_test_token\r\n"));
+        assert!(request.ends_with(r#"{"adDecisionId":"decision-1"}"#));
+    }
+
+    #[test]
+    fn api_post_rejects_non_success_statuses() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!(
+            "http://{}/api/events/impression",
+            listener.local_addr().unwrap()
+        );
+        let server = thread::spawn(move || {
+            serve_one_http_request(listener, "401 Unauthorized", r#"{"error":"unauthorized"}"#)
+        });
+
+        let result = api_post_with_token(&url, "{}", None);
+        server.join().unwrap();
+
+        assert!(result.is_err());
     }
 
     #[test]
