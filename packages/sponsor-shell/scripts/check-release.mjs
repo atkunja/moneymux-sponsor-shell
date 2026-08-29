@@ -16,6 +16,7 @@ const cargoLock = await read('Cargo.lock')
 const changelog = await read('CHANGELOG.md')
 const rootReadme = await read('README.md')
 const packageReadme = await read('packages/sponsor-shell/README.md')
+const releaseRunbook = await read('RELEASING.md')
 
 const version = packageJson.version
 const cargoVersion = cargoManifest.match(/^version = "([^"]+)"$/m)?.[1]
@@ -36,9 +37,15 @@ const installCommand = `npm install --global @moneymux/sponsor-shell@${version}`
 assert.ok(rootReadme.includes(installCommand), 'root README install command is stale')
 assert.ok(packageReadme.includes(installCommand), 'npm README install command is stale')
 
+const releaseTag = `v${version}`
+const tagCommand = `git tag --annotate ${releaseTag} --message "Sponsor Shell ${releaseTag}"`
+const packageSelector = `@moneymux/sponsor-shell@${version}`
+assert.ok(releaseRunbook.includes(tagCommand), 'release runbook tag command is stale')
+assert.ok(releaseRunbook.includes(packageSelector), 'release runbook package verification is stale')
+
 const expectedTag = process.env.EXPECTED_RELEASE_TAG
 if (expectedTag) {
-  assert.equal(expectedTag, `v${version}`, `tag ${expectedTag} does not match package version`)
+  assert.equal(expectedTag, releaseTag, `tag ${expectedTag} does not match package version`)
 }
 
 console.log(`Release metadata is consistent for @moneymux/sponsor-shell@${version}`)
