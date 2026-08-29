@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.2
+npm install --global @moneymux/sponsor-shell@0.1.3
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
@@ -21,7 +21,8 @@ sponsor-shell doctor
 sponsor-shell
 ```
 
-Register the terminal in the authenticated Developer workspace before running
+`login` stores the API URL and opens the MoneyMux developer account flow in the
+default browser. Register the terminal in the authenticated Developer workspace before running
 `link`. The current public package is intended for the MoneyMux staging API;
 production promotion will be documented separately when it is enabled.
 

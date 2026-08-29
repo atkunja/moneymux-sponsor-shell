@@ -43,8 +43,10 @@ override that path.
 ## Network requests
 
 Network requests are sent only after a device has been linked, except that
-`sponsor-shell login` opens the configured MoneyMux onboarding URL in the
-default browser. API requests are sent to the base URL selected with
+`sponsor-shell login` opens the configured MoneyMux `/app` publisher account
+URL in the default browser. Opening that URL is delegated to the operating
+system; Sponsor Shell does not receive or store the browser session, email, or
+password. API requests are sent to the base URL selected with
 `--api-base-url`, stored in the config, or supplied through
 `SPONSOR_SHELL_API_BASE_URL`.
 

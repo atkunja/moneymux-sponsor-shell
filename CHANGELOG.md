@@ -4,6 +4,17 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.3 - 2026-08-29
+
+### Fixed
+
+- `sponsor-shell login` now opens the role-specific MoneyMux `/app`
+  authentication flow instead of sending publishers to the marketing homepage.
+
+### Testing
+
+- Added regression coverage for hosted staging and path-prefixed API base URLs.
+
 ## 0.1.2 - 2026-08-29
 
 ### Changed

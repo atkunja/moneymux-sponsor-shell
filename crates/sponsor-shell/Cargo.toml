@@ -1,6 +1,6 @@
 [package]
 name = "sponsor-shell"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 description = "A sponsored terminal shell wrapper with persistent ASCII ad inventory."
 license = "MIT"
