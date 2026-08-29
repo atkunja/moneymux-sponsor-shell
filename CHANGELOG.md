@@ -4,6 +4,15 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+### Changed
+
+- Updated the terminal event and rendering backend from crossterm 0.27 to 0.29.
+
+### Fixed
+
+- Key-release events are ignored so enhanced terminals cannot forward a
+  duplicate `Ctrl-C` into the wrapped application.
+
 ## 0.1.1 - 2026-08-29
 
 ### Added
