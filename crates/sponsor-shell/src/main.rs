@@ -17,6 +17,7 @@ use crossterm::style;
 use crossterm::terminal::{self, disable_raw_mode, enable_raw_mode, ClearType};
 use crossterm::{execute, queue};
 use serde::{Deserialize, Serialize};
+use url::{Host, Url};
 
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
@@ -423,12 +424,10 @@ fn run_link(args: &[String]) -> Result<i32> {
     let device_token = clean_config_value(device_token)
         .context("missing device token; pass --device-token <ssdev_token>")?;
     let mut config = load_cli_config().unwrap_or_default();
-    config.api_base_url = clean_config_value(api_base_url).or_else(|| Some(platform_base_url()));
+    let api_base_url = clean_config_value(api_base_url).unwrap_or_else(platform_base_url);
+    config.api_base_url = Some(validate_api_base_url(&api_base_url)?);
     config.device_id = Some(device_id);
     config.device_token = Some(device_token);
-    if let Some(url) = config.api_base_url.as_deref() {
-        warn_if_insecure_base_url(url);
-    }
     save_cli_config(&config)?;
 
     println!("sponsor-shell linked");
@@ -448,30 +447,38 @@ fn print_link_help() {
     println!("optional: --api-base-url https://sponsor-shell.example.com");
 }
 
-/// True when the URL would send the device bearer token over cleartext HTTP to a
-/// non-local host. Local development over http://localhost stays quiet.
-fn is_insecure_base_url(url: &str) -> bool {
-    let Some(rest) = url.trim().strip_prefix("http://") else {
-        return false;
-    };
-    let host = rest
-        .split(['/', ':', '?', '#'])
-        .next()
-        .unwrap_or("")
-        .to_ascii_lowercase();
-    let is_local = matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1" | "0.0.0.0")
-        || host.ends_with(".localhost");
-    !is_local
+fn validate_api_base_url(value: &str) -> Result<String> {
+    let normalized = value.trim().trim_end_matches('/');
+    let parsed = Url::parse(normalized).context("invalid API base URL")?;
+    if parsed.host().is_none() {
+        anyhow::bail!("API base URL must include a host");
+    }
+    if !parsed.username().is_empty() || parsed.password().is_some() {
+        anyhow::bail!("API base URL must not contain embedded credentials");
+    }
+    if parsed.query().is_some() || parsed.fragment().is_some() {
+        anyhow::bail!("API base URL must not contain a query string or fragment");
+    }
+
+    match parsed.scheme() {
+        "https" => {}
+        "http" if is_local_api_host(&parsed) => {}
+        "http" => anyhow::bail!("remote API base URLs must use https://"),
+        _ => anyhow::bail!("API base URL must use https://, or http:// for local development"),
+    }
+
+    Ok(normalized.to_string())
 }
 
-/// Warn (on stderr) if the configured API base URL is insecure for token transport.
-fn warn_if_insecure_base_url(url: &str) {
-    if is_insecure_base_url(url) {
-        eprintln!(
-            "warning: {} uses cleartext http:// — your device token will be sent \
-             unencrypted. Use an https:// API base URL outside local development.",
-            url.trim()
-        );
+fn is_local_api_host(url: &Url) -> bool {
+    match url.host() {
+        Some(Host::Domain(host)) => {
+            host.eq_ignore_ascii_case("localhost")
+                || host.to_ascii_lowercase().ends_with(".localhost")
+        }
+        Some(Host::Ipv4(host)) => host.is_loopback() || host.is_unspecified(),
+        Some(Host::Ipv6(host)) => host.is_loopback() || host.is_unspecified(),
+        None => false,
     }
 }
 
@@ -509,7 +516,7 @@ fn configure_api_base_url(api_base_url: Option<String>) -> Result<Option<String>
     let Some(api_base_url) = clean_config_value(api_base_url) else {
         return Ok(None);
     };
-    warn_if_insecure_base_url(&api_base_url);
+    let api_base_url = validate_api_base_url(&api_base_url)?;
     let mut config = load_cli_config().unwrap_or_default();
     config.api_base_url = Some(api_base_url.clone());
     save_cli_config(&config)?;
@@ -781,6 +788,7 @@ fn api_url(path: &str) -> String {
 }
 
 fn api_post(url: &str, body: String) -> Result<String> {
+    validate_api_base_url(url).context("refusing unsafe Sponsor Shell API request")?;
     let mut request = ureq::post(url)
         .set("Content-Type", "application/json")
         .timeout(Duration::from_secs(2));
@@ -2515,16 +2523,26 @@ mod tests {
     }
 
     #[test]
-    fn insecure_base_url_flags_cleartext_remote_only() {
-        // Remote cleartext → insecure.
-        assert!(is_insecure_base_url("http://moneymux.com"));
-        assert!(is_insecure_base_url("http://203.0.113.10:4000/api"));
-        // Local dev over http is fine.
-        assert!(!is_insecure_base_url("http://localhost:4000"));
-        assert!(!is_insecure_base_url("http://127.0.0.1:4000"));
-        assert!(!is_insecure_base_url("http://app.localhost"));
-        // HTTPS is always fine.
-        assert!(!is_insecure_base_url("https://moneymux.com"));
+    fn api_base_url_requires_https_except_for_local_development() {
+        assert!(validate_api_base_url("http://moneymux.com").is_err());
+        assert!(validate_api_base_url("http://203.0.113.10:4000/api").is_err());
+
+        assert_eq!(
+            validate_api_base_url("http://localhost:4000/").unwrap(),
+            "http://localhost:4000"
+        );
+        assert!(validate_api_base_url("http://127.0.0.1:4000").is_ok());
+        assert!(validate_api_base_url("http://[::1]:4000").is_ok());
+        assert!(validate_api_base_url("http://app.localhost").is_ok());
+        assert!(validate_api_base_url("https://moneymux.com").is_ok());
+    }
+
+    #[test]
+    fn api_base_url_rejects_credential_and_url_smuggling_fields() {
+        assert!(validate_api_base_url("https://user:secret@moneymux.com").is_err());
+        assert!(validate_api_base_url("https://moneymux.com?target=evil").is_err());
+        assert!(validate_api_base_url("https://moneymux.com#fragment").is_err());
+        assert!(validate_api_base_url("file:///tmp/fake-api").is_err());
     }
 
     #[cfg(unix)]
