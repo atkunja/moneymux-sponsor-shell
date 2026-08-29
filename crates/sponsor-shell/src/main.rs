@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::OnceLock;
 use std::thread;
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -52,7 +53,9 @@ const SPONSOR_AD_WHILE_WORKING_ENV: &str = "SPONSOR_SHELL_AD_WHILE_WORKING";
 const AD_WHILE_WORKING_USER_IDLE: Duration = Duration::from_secs(2);
 const AD_WHILE_WORKING_ACTIVITY_WINDOW: Duration = Duration::from_secs(2);
 const REMOTE_AD_REFRESH: Duration = Duration::from_secs(30);
+const API_REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 static CLICK_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+static API_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
 const RAILWAY_LOGO: &[&str] = &[
     "    ____  ___    ______ _       _______  __",
     "   / __ \\/   |  /  _/ /| |     / /   \\ \\/ /",
@@ -980,17 +983,28 @@ fn api_url(path: &str) -> String {
 }
 
 fn api_post(url: &str, body: String) -> Result<String> {
+    let token = device_token();
+    api_post_with_token(url, &body, token.as_deref())
+}
+
+fn api_post_with_token(url: &str, body: &str, token: Option<&str>) -> Result<String> {
     validate_api_base_url(url).context("refusing unsafe Sponsor Shell API request")?;
-    let mut request = ureq::post(url)
-        .set("Content-Type", "application/json")
-        .timeout(Duration::from_secs(2));
-    if let Some(token) = device_token() {
-        request = request.set("Authorization", &format!("Bearer {token}"));
+    let agent = API_AGENT.get_or_init(|| {
+        ureq::Agent::config_builder()
+            .timeout_global(Some(API_REQUEST_TIMEOUT))
+            .build()
+            .into()
+    });
+    let mut request = agent.post(url).header("Content-Type", "application/json");
+    if let Some(token) = token {
+        request = request.header("Authorization", format!("Bearer {token}"));
     }
-    request
-        .send_string(&body)
-        .context("failed to post sponsor-shell API request")?
-        .into_string()
+    let mut response = request
+        .send(body)
+        .context("failed to post sponsor-shell API request")?;
+    response
+        .body_mut()
+        .read_to_string()
         .context("failed to read sponsor-shell API response")
 }
 
