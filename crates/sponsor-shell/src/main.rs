@@ -399,7 +399,7 @@ fn run_login(args: &[String]) -> Result<i32> {
         return Ok(0);
     }
     let base_url = configure_api_base_url(options.api_base_url)?.unwrap_or_else(platform_base_url);
-    let onboarding_url = format!("{base_url}/?section=publisher");
+    let onboarding_url = publisher_onboarding_url(&base_url)?;
     println!("sponsor-shell publisher login");
     println!("api: {base_url}");
     println!("Open this URL to create a publisher account and connect Stripe:");
@@ -413,7 +413,17 @@ fn run_login(args: &[String]) -> Result<i32> {
 
 fn print_login_help() {
     println!("sponsor-shell login [--api-base-url https://sponsor-shell.example.com]");
-    println!("stores the API URL when provided, then opens the publisher dashboard");
+    println!("stores the API URL when provided, then opens publisher account access");
+}
+
+fn publisher_onboarding_url(base_url: &str) -> Result<String> {
+    let mut url = Url::parse(base_url).context("invalid publisher onboarding base URL")?;
+    url.set_path("/app");
+    url.set_query(Some(
+        "section=auth&mode=signup&role=publisher&next=publisher",
+    ));
+    url.set_fragment(None);
+    Ok(url.into())
 }
 
 fn run_configure(args: &[String]) -> Result<i32> {
@@ -3081,6 +3091,18 @@ mod tests {
         assert_eq!(
             positional.api_base_url,
             Some("https://terminal.example.com".to_string())
+        );
+    }
+
+    #[test]
+    fn publisher_login_opens_the_role_specific_app_auth_flow() {
+        assert_eq!(
+            publisher_onboarding_url("https://staging.moneymux.com").unwrap(),
+            "https://staging.moneymux.com/app?section=auth&mode=signup&role=publisher&next=publisher"
+        );
+        assert_eq!(
+            publisher_onboarding_url("http://localhost:4000/api").unwrap(),
+            "http://localhost:4000/app?section=auth&mode=signup&role=publisher&next=publisher"
         );
     }
 
