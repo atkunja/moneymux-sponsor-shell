@@ -4,6 +4,12 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+### Fixed
+
+- Preserve the wrapped program's exit status under zsh, whose `status` variable
+  is read-only. Quote the complete exit trap so paths with spaces and apostrophes
+  remain safe. Regression coverage executes the trap in both bash and zsh.
+
 ## 0.1.3 - 2026-08-29
 
 ### Fixed
