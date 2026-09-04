@@ -1620,12 +1620,7 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
     let mut app_parts = Vec::with_capacity(command_args.len() + 1);
     app_parts.push(command.to_string());
     app_parts.extend(command_args.iter().cloned());
-    let app_command = format!(
-        "trap 'status=$?; printf \"%s\\n\" \"$status\" > {}; tmux kill-session -t {}; exit \"$status\"' EXIT; {}",
-        shell_quote(&exit_file.to_string_lossy()),
-        shell_quote(&session),
-        shell_join(app_parts),
-    );
+    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), &session, app_parts);
 
     run_tmux([
         "new-session",
@@ -1682,6 +1677,20 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
         .unwrap_or_else(|| attach_status.code().unwrap_or(1));
     let _ = fs::remove_file(exit_file);
     Ok(exit_code)
+}
+
+fn sponsor_app_command(exit_file: &str, session: &str, app_parts: Vec<String>) -> String {
+    // tmux uses the user's default shell. In zsh, `status` is read-only.
+    let exit_trap = format!(
+        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; tmux kill-session -t {}; exit \"$sponsor_exit_code\"",
+        shell_quote(exit_file),
+        shell_quote(session),
+    );
+    format!(
+        "trap {} EXIT; {}",
+        shell_quote(&exit_trap),
+        shell_join(app_parts)
+    )
 }
 
 fn sponsor_ad_command(
@@ -2729,6 +2738,33 @@ mod tests {
         );
         stream.write_all(response.as_bytes()).unwrap();
         String::from_utf8(request).unwrap()
+    }
+
+    #[test]
+    fn app_exit_trap_preserves_failure_in_bash_and_zsh() {
+        for shell in ["/bin/bash", "/bin/zsh"] {
+            if !std::path::Path::new(shell).exists() {
+                continue;
+            }
+            let exit_file = env::temp_dir().join(format!(
+                "sponsor exit 'quoted'-{}-{}.status",
+                std::process::id(),
+                shell.rsplit('/').next().unwrap()
+            ));
+            let command = sponsor_app_command(
+                &exit_file.to_string_lossy(),
+                "test-session",
+                vec!["/bin/sh".into(), "-c".into(), "exit 37".into()],
+            );
+            let output = Command::new(shell)
+                .args(["-c", &format!("tmux() {{ :; }}; {command}")])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(37), "{shell}: {output:?}");
+            assert!(output.stderr.is_empty(), "{shell}: {output:?}");
+            assert_eq!(fs::read_to_string(&exit_file).unwrap(), "37\n");
+            fs::remove_file(exit_file).unwrap();
+        }
     }
 
     #[test]
