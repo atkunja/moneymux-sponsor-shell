@@ -1472,7 +1472,9 @@ fn run_sponsor_pane() -> Result<()> {
                     {
                         let url = link_url(&link);
                         open_url(&url).ok();
-                        report_click(&creative, &url);
+                        if full_creative_fits(&creative, layout) {
+                            report_click(&creative, &url);
+                        }
                         render_fullscreen_ad(
                             &mut stdout,
                             layout,
