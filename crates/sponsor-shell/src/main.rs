@@ -3339,6 +3339,35 @@ mod tests {
         assert!(pending.iter().any(|r| r.path == IMPRESSION_EVENT_PATH));
     }
 
+    // Clicks now share the queue, and the completed/exhausted sets, with
+    // impressions. Those sets are consulted by ad decision id, so a click key
+    // that equalled one would make an exhausted click silently block that
+    // decision's impression. The prefix is what prevents it.
+    #[test]
+    fn a_click_key_can_never_equal_an_ad_decision_id() {
+        let key = next_click_event_id("decision-1");
+        assert!(key.starts_with("click-"), "{key}");
+        assert_ne!(key, "decision-1");
+
+        let mut exhausted = HashSet::new();
+        exhausted.insert(key);
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        let mut pending = Vec::new();
+        let mut sequence = 0;
+        assert!(enqueue_impression_if_needed(
+            &creative,
+            &HashSet::new(),
+            &exhausted,
+            &mut pending,
+            Layout::new(80, 24),
+            &mut sequence,
+            1_000,
+        ));
+    }
+
     #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
