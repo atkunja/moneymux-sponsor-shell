@@ -47,6 +47,26 @@ Only the fields enumerated in `DATA_COLLECTION.md` may cross this boundary.
 Requests use HTTPS except for explicit local-development hosts. The device token
 is placed in the authorization header only after URL validation succeeds.
 
+### Harness hooks to local activity labels
+
+Hooks are explicitly installed by the user from print-only JSON configuration.
+They receive vendor JSON on stdin but retain only an allowlisted event name. The
+64-KiB input limit bounds allocation; a one-second vendor hook timeout bounds a
+stalled input stream. The silent hook command returns success even when input or
+delivery fails, sends no model context and makes no permission decisions.
+
+Each wrapper has a new mode-0700 directory and Unix datagram socket; explicit
+per-pane environment values prevent a stale tmux server from routing to another
+wrapper. Receivers accept only the expected harness and known event names,
+reject extra datagram fields and future/stale timestamps, and drain at most 64
+messages per frame. A missing listener always leaves protected mode active.
+
+These hints are advisory, not authenticated model state. A same-user process or
+inherited subagent environment can forge/reorder hints. Hooks cannot modify ad
+selection, impression/click payloads, billing eligibility, permission prompts or
+the automatic no-takeover rule. Only hardcoded labels reach the terminal. Neither
+hook events nor their invocation frequency prove that an ad was visible.
+
 ### MoneyMux creative to terminal renderer
 
 Creative fields are untrusted. Control characters and Unicode bidirectional
@@ -126,6 +146,15 @@ policy, pinned GitHub Action commit SHAs, grouped Dependabot updates, compiler
 lint/test gates, and source-only Git history without committed native binaries.
 
 ## Residual risks
+
+- Vendor hook delivery can be absent, delayed or include child-agent activity.
+  The label describes a recent event, not a reliable loading or streaming state.
+- A force-killed wrapper can leave an unused private socket/directory in the
+  temporary area. It contains no persisted hook payload or credentials.
+- Protected mode reserves at most one quarter of normal terminal height for
+  automatic ad fitting, but very small terminals still have limited app space;
+  users may resize or close the wrapper. Manual tmux zoom/divider changes remain
+  under the user's control.
 
 - A compromised MoneyMux service can choose misleading but sanitized creative
   copy and declared destinations until the service is remediated.

@@ -10,9 +10,29 @@ shell or developer tool in one pane, and renders the sponsor creative in a
 second pane. The requested executable and arguments are passed to the wrapped
 process locally.
 
-The client uses local `tmux` activity timestamps to decide whether the user is
-idle and whether an opt-in loading-state placement should expand. These activity
-timestamps are not terminal contents.
+The sponsor pane reads its own `/dev/tty` keyboard/mouse/resize events using
+Crossterm's level-triggered input backend. This does not read the wrapped
+program's terminal output or scrollback. Ctrl-C pressed in the sponsor pane is
+forwarded to the app pane; other sponsor-pane key events return focus to the app.
+
+The generic wrapper uses local `tmux` activity timestamps to decide whether the
+user is idle and whether an opt-in activity-based placement should expand. It
+cannot distinguish a spinner from streamed output. These timestamps are not
+terminal contents. Explicit `sponsor-shell harness claude|codex` sessions never
+automatically expand the sponsor pane over the harness.
+
+Optional manually installed `harness-event` hooks read up to 64 KiB of JSON stdin
+locally. The input can contain private prompts, tool inputs, transcript paths or
+other vendor fields: these are discarded, never logged, persisted, read as paths,
+or uploaded. Only the allowlisted event name, harness identifier and timestamp
+are sent to the wrapper's private Unix socket. The sidecar uses them for a
+ten-second advisory label, never ad selection, qualification or payment.
+
+`harness-hooks` only prints configuration using the current executable's absolute
+path; it does not install hooks or change existing vendor settings. `harness`
+resolves the selected vendor executable from the invoking process's PATH. Both
+panes receive explicit per-wrapper bridge variables via the local `env` command,
+clearing inherited hook channels from an existing tmux server first.
 
 If `tmux` is unavailable, normal Sponsor Shell commands stop and print manual
 installation guidance. Sponsor Shell invokes Homebrew or a detected Linux
@@ -20,6 +40,12 @@ package manager only after the user explicitly runs `sponsor-shell
 install-tmux`. That explicit command may invoke `sudo` on Linux.
 
 ## Local storage
+
+Protected harness sessions create a unique mode-0700 `mmh-*` directory beneath
+the OS temporary directory containing a Unix socket named `events`. Hook payloads
+are transient messages, not files. Normal wrapper exit removes that socket and
+empty directory; a force kill can leave socket/directory metadata behind. No
+recursive deletion, global session registry, transcript file or hook log is used.
 
 By default the client stores its configuration at:
 

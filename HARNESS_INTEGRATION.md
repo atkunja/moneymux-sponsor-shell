@@ -1,0 +1,150 @@
+# Claude Code and Codex terminal integration
+
+This is an opt-in **sidecar**, not a replacement for either vendor's spinner or
+official app UI. It starts with the harness pane selected and never automatically
+zooms the ad over it, even during long idle periods, permission prompts, missing
+hooks, or `SPONSOR_SHELL_AD_WHILE_WORKING=1`. The initial split gives the harness
+75% of the window; automatic ad fitting uses at most one quarter (with a minimum
+of two rows). Users can still move the divider themselves.
+
+## Start a protected terminal session
+
+Build the current source first; these commands are not in npm release 0.1.3:
+
+```sh
+cargo build --locked --release
+./target/release/sponsor-shell harness claude
+./target/release/sponsor-shell harness codex
+./target/release/sponsor-shell harness codex -- --help
+```
+
+Arguments following the harness name (or optional `--`) are passed unchanged.
+The executable is resolved from the invoking shell's `PATH`, not a stale tmux
+server's `PATH`. No aliases, shell profiles, vendor binaries or settings are
+rewritten. Both a supported harness executable and tmux must already be installed.
+
+Existing `sponsor-shell claude` / `sponsor-shell codex` commands retain the old
+generic wrapper behavior. Use the explicit `harness` command for protected mode.
+
+## Optional activity hints
+
+The sidecar works without hooks and displays `activity unavailable`. To enable
+recent-event labels, print the appropriate configuration from the binary you
+intend to keep installed:
+
+```sh
+./target/release/sponsor-shell harness-hooks claude
+./target/release/sponsor-shell harness-hooks codex
+```
+
+These commands **only print JSON**. Review it, then manually merge its hook
+entries into your existing settings without replacing existing entries:
+
+- Claude Code: the `hooks` object in your selected Claude settings layer, for
+  example `~/.claude/settings.json` or a trusted project settings file.
+- Codex: the `hooks` object in `~/.codex/hooks.json` or a trusted project's
+  `.codex/hooks.json`. In Codex, review and trust the definitions through `/hooks`.
+
+Do not redirect the output over an existing settings file. Each generated command
+contains the absolute binary path, shell-quoted for spaces/apostrophes. Regenerate
+and re-review if you move the binary. Do not install the same entries at multiple
+layers. No hook changes permissions, supplies model context, or returns a policy
+decision. The one-second hook timeout bounds hung stdin; command failures are
+silent successful no-ops within Sponsor Shell.
+
+To disable: remove only the Sponsor Shell entries you added, then stop the
+wrapped session. No global hook service or session log remains. The private
+socket directory is removed on normal wrapper exit. A force-killed wrapper may
+leave an empty directory/socket inode in the operating system's temporary area;
+it contains no prompt, transcript or token data.
+
+## What a label means
+
+`Claude | recent hook: permission requested` means exactly that an allowlisted
+hook arrived recently. Labels expire after ten seconds. They are **not** proof
+of current model state, a loading/streaming distinction, visibility, attention,
+or a billable impression. Hooks may be missing, delayed, reordered, duplicated,
+or inherited by subagents. A subagent sharing the wrapper environment can update
+the same advisory label. No per-turn correctness is claimed.
+
+The generated configuration uses core session, prompt, tool, permission and stop
+events, plus Claude notifications/tool failures and Codex interrupts. It does not
+depend on Claude's newer MessageDisplay event or parse transcripts/terminal
+output to infer a loading state. If your installed vendor version does not
+support an event, omit that entry; protected mode still works without it.
+
+Each wrapper has a private mode-0700 temporary directory and a local Unix socket.
+The hook reads at most 64 KiB of stdin, discards all but the event name, and sends
+only the harness identifier, event name and timestamp to that socket. Nothing
+from a hook is sent to MoneyMux. Oversized/malformed input, unavailable sockets,
+unknown events and stale/future datagrams are ignored. These are local hints,
+not an authenticated boundary against other processes running as the same user.
+
+## Advertising and payment boundaries
+
+The existing creative pane still displays disclosed sponsor art and declared
+links. Its existing signed decision, interactivity, duration and click rules
+remain the only client-side ad-event inputs. A hook never requests an ad, reports
+an impression/click, changes billing eligibility or earns publisher money. This
+does not add a status-line or native-loading placement. Such a placement needs
+its own server contract and visibility qualification before it can be billed.
+
+## Evidence and limitations
+
+The implementation follows the official
+[Codex hooks contract](https://learn.chatgpt.com/docs/hooks) and
+[Claude Code hooks contract](https://code.claude.com/docs/en/hooks), checked on
+2026-09-04. The docs describe lifecycle callbacks, not permission to replace a
+vendor's native loading UI. Claude's separate
+[status-line interface](https://code.claude.com/docs/en/statusline) and Codex's
+[App Server](https://learn.chatgpt.com/docs/app-server) are possible future
+integration surfaces, not features implemented here.
+
+Offline acceptance with synthetic harness executables checks actual tmux PTYs,
+argument forwarding, local hook rendering, stale-hint expiry, permission-prompt
+visibility, resizing and exit codes:
+
+```sh
+cargo build --locked
+python3 scripts/test-harness-pty.py target/debug/sponsor-shell
+```
+
+It uses a dedicated temporary tmux server, disables billing interactivity, never
+loads vendor account credentials and does not alter your existing tmux sessions.
+This fixture test is not proof of hook delivery from a real Claude/Codex model
+turn. Live vendor hook acceptance and a signed public release remain separate
+release gates.
+
+### Local verification record — 2026-09-04
+
+- Rust 1.96.1 on macOS arm64: formatting, strict Clippy, 53 unit tests and three
+  compiled-CLI integration tests passed; optimized release build passed.
+- Three npm-launcher tests and release-metadata consistency passed.
+- Dependency policy passed for the initial bridge, with the existing non-blocking
+  duplicate `syn` dependency warning. Linux acceptance subsequently selected
+  Crossterm's supported `use-dev-tty` input backend (adding `filedescriptor` and
+  its `thiserror` dependency) to avoid losing keys alongside resize readiness.
+  This backend uses level-triggered polling with a one-millisecond deadline;
+  zero-timeout polls are unsupported by its event loop.
+  Dependency policy was rerun successfully with those three new locked packages.
+- Synthetic Claude and Codex PTYs each preserved exit 37, literal metacharacter
+  arguments, stale-server socket isolation, private-input suppression, visible
+  permission prompts at 100x36 and 48x18, and no zoom beyond the ten-second lease.
+  The final suite passed on macOS arm64 and a clean Debian Linux arm64 container:
+  a third Codex fixture forwarded Ctrl-C after resize from the selected ad pane
+  and preserved exit 130; a fourth handled the interrupt, stayed open, then
+  preserved its later exit 37. All runs cleaned their private hook directories.
+  The supervisory shell catches SIGINT without ignoring it, so the wrapped
+  process still receives it normally and controls whether its session ends.
+- Installed vendor binaries reported `codex-cli 0.144.1` and Claude Code
+  `2.1.191`; this records discovery only, not real provider hook acceptance.
+- The public repository still requires its normal code-owner review and hosted
+  checks. This record is local evidence, not a claim that a PR is merged or that
+  a new npm release is available. No staging/production flags were changed.
+
+Ubuntu's tmux 3.4 also exposed a pre-existing startup failure with `split-window
+-p`. The wrapper now uses the documented `-l 75%` form (or the configured generic
+wrapper percentage), supported by the
+[tmux manual](https://man.openbsd.org/OpenBSD-7.5/tmux.1). PTY acceptance uses a
+real controlling terminal and an isolated tmux server, with bounded synthetic
+output available if startup fails.

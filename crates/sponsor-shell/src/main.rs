@@ -20,6 +20,8 @@ use crossterm::{execute, queue};
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
+mod harness;
+
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
 const DEFAULT_APP_PANE_PERCENT: &str = "75";
@@ -44,9 +46,8 @@ const SPONSOR_IDLE_FULLSCREEN_SECONDS_ENV: &str = "SPONSOR_SHELL_IDLE_FULLSCREEN
 const SPONSOR_INTERACTIVE_ENV: &str = "SPONSOR_SHELL_INTERACTIVE";
 // Opt-in: also expand the ad while the wrapped harness is "working" (loading /
 // streaming) — i.e. its pane is producing output while the user is not typing.
-// This is the harness-agnostic way to show an ad during a tool's loading state
-// (Claude Code / Codex / any TUI) without touching the harness itself. Default
-// off so no existing behavior changes.
+// This heuristic cannot distinguish loading from streamed text or permission
+// dialogs. Explicit protected harness mode never uses it. Default off.
 const SPONSOR_AD_WHILE_WORKING_ENV: &str = "SPONSOR_SHELL_AD_WHILE_WORKING";
 // While the harness is working, expand the ad once the user has been idle this
 // long and the app pane produced output within this recent window.
@@ -288,6 +289,47 @@ fn main() {
 
 fn run() -> Result<i32> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "harness-event") {
+        // This entry point never prints diagnostics or emits model/permission output.
+        if args.len() == 2 {
+            if let Some(harness) = harness::Harness::parse(&args[1]) {
+                harness::emit(harness);
+            }
+        }
+        return Ok(0);
+    }
+    if args.first().is_some_and(|arg| arg == "harness-hooks") {
+        let harness = args
+            .get(1)
+            .and_then(|value| harness::Harness::parse(value))
+            .filter(|_| args.len() == 2)
+            .context("usage: sponsor-shell harness-hooks <claude|codex> (prints JSON only)")?;
+        let executable = env::current_exe().context("failed to locate sponsor-shell")?;
+        let executable = executable
+            .to_str()
+            .context("hook executable path must be UTF-8")?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&harness::hook_configuration(harness, executable))?
+        );
+        return Ok(0);
+    }
+    if args.first().is_some_and(|arg| arg == "harness") {
+        let harness = args
+            .get(1)
+            .and_then(|value| harness::Harness::parse(value))
+            .context("usage: sponsor-shell harness <claude|codex> [-- arguments...]")?;
+        let remaining = &args[2..];
+        let forwarded = remaining
+            .strip_prefix(&["--".to_string()])
+            .unwrap_or(remaining);
+        let executable = harness::executable(harness)
+            .context("selected harness is not executable on the invoking shell's PATH")?;
+        let executable = executable
+            .to_str()
+            .context("harness executable path must be UTF-8")?;
+        return run_tmux_shell(executable, forwarded, Some(harness));
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--help" || arg == "-h" || arg == "help")
@@ -341,7 +383,7 @@ fn run() -> Result<i32> {
         args[1..].to_vec()
     };
 
-    run_tmux_shell(&command, &command_args)
+    run_tmux_shell(&command, &command_args, None)
 }
 
 fn print_help() {
@@ -357,6 +399,7 @@ fn help_lines() -> &'static [&'static str] {
         "Usage:",
         "  sponsor-shell [command-to-wrap] [arguments...]",
         "  sponsor-shell <management-command>",
+        "  sponsor-shell harness <claude|codex> [-- arguments...]",
         "",
         "Management commands:",
         "  login          Open the MoneyMux developer onboarding page",
@@ -366,6 +409,8 @@ fn help_lines() -> &'static [&'static str] {
         "  status         Show the current local configuration",
         "  doctor         Run secret-free local diagnostics",
         "  install-tmux   Explicitly install the required tmux dependency",
+        "  harness        Wrap Claude/Codex with a protected split pane and local hook hints",
+        "  harness-hooks  Print optional hook JSON; does not install or replace settings",
         "  help           Show this help",
         "  version        Show the installed Sponsor Shell version",
     ]
@@ -1346,6 +1391,7 @@ fn sanitize_terminal_text(value: &str) -> String {
 
 fn run_sponsor_pane() -> Result<()> {
     let _guard = PaneGuard::enter()?;
+    let mut activity = harness::Activity::from_env();
     let mut stdout = io::stdout();
     let terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
     let mut ads_shown_this_session = 0_u64;
@@ -1383,13 +1429,19 @@ fn run_sponsor_pane() -> Result<()> {
         frame,
         &creative,
         hovered_ad_cell,
+        activity.as_ref(),
     )?;
     // The app pane may not exist yet (the launcher splits it right after this
     // process starts), so the initial fit happens in the loop below once it is.
     let mut pane_fitted = false;
 
     loop {
-        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
+        if let Some(activity) = &mut activity {
+            activity.poll();
+        }
+        // The level-triggered /dev/tty backend preserves pending keys across
+        // resize notifications. Its polling loop requires a nonzero deadline.
+        while event::poll(Duration::from_millis(1)).unwrap_or(false) {
             match event::read().context("failed to read sponsor pane input")? {
                 event::Event::Mouse(mouse) => {
                     let layout = Layout::current();
@@ -1404,6 +1456,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     }
 
@@ -1423,6 +1476,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     } else if fullscreen {
                         if let Some(tmux) = &tmux {
@@ -1435,7 +1489,14 @@ fn run_sponsor_pane() -> Result<()> {
                 }
                 event::Event::Resize(_, _) => {
                     let layout = Layout::current();
-                    render_fullscreen_ad(&mut stdout, layout, frame, &creative, hovered_ad_cell)?;
+                    render_fullscreen_ad(
+                        &mut stdout,
+                        layout,
+                        frame,
+                        &creative,
+                        hovered_ad_cell,
+                        activity.as_ref(),
+                    )?;
                     // A width change can switch the art variant, so re-fit the
                     // pane to the ad. Height-only changes are left alone — the
                     // divider stays draggable.
@@ -1480,7 +1541,9 @@ fn run_sponsor_pane() -> Result<()> {
                     return Ok(());
                 }
 
-                if !fullscreen {
+                // Lifecycle hints do not prove the app is safe to obscure. Even
+                // stale/missing hooks, idle input and the legacy opt-in must not zoom it.
+                if !fullscreen && activity.is_none() {
                     let client_idle = tmux.client_idle_for();
                     // Only query the app pane when the opt-in mode needs it.
                     let app_pane_idle = if ad_while_working {
@@ -1500,6 +1563,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     }
                 }
@@ -1563,7 +1627,14 @@ fn run_sponsor_pane() -> Result<()> {
                     idle_delay = idle_fullscreen_delay(&creative);
                     hovered_ad_cell = None;
                     hovered_link = None;
-                    render_fullscreen_ad(&mut stdout, layout, frame, &creative, hovered_ad_cell)?;
+                    render_fullscreen_ad(
+                        &mut stdout,
+                        layout,
+                        frame,
+                        &creative,
+                        hovered_ad_cell,
+                        activity.as_ref(),
+                    )?;
                     // New creative, new height — snap the pane to it.
                     if !fullscreen {
                         if let Some(tmux) = &tmux {
@@ -1584,6 +1655,7 @@ fn run_sponsor_pane() -> Result<()> {
                 frame,
                 &creative,
                 hovered_ad_cell,
+                activity.as_ref(),
             )?;
             last_animation = Instant::now();
         }
@@ -1591,8 +1663,19 @@ fn run_sponsor_pane() -> Result<()> {
     }
 }
 
-fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
+fn run_tmux_shell(
+    command: &str,
+    command_args: &[String],
+    harness: Option<harness::Harness>,
+) -> Result<i32> {
     ensure_tmux_available()?;
+
+    let bridge = harness
+        .map(|_| harness::BridgeDirectory::create())
+        .transpose()
+        .context("failed to create private harness hook channel")?;
+    let socket_path = bridge.as_ref().map(harness::BridgeDirectory::socket_path);
+    let lifecycle_environment = harness::environment(harness, socket_path.as_deref());
 
     let session = format!("sponsor-shell-{}", std::process::id());
     let _session_guard = TmuxSessionGuard::new(session.clone());
@@ -1600,7 +1683,11 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
     let cwd = env::current_dir().context("failed to read current directory")?;
     let exit_file = env::temp_dir().join(format!("{session}.status"));
     let _ = fs::remove_file(&exit_file);
-    let app_percent = app_pane_percent();
+    let app_percent = if harness.is_some() {
+        DEFAULT_APP_PANE_PERCENT.to_string()
+    } else {
+        app_pane_percent()
+    };
     let wrapped_command = wrapped_command_label(command, command_args);
     let idle_fullscreen_seconds =
         idle_fullscreen_delay_from_env().map(|seconds| seconds.to_string());
@@ -1617,15 +1704,11 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
         idle_fullscreen_seconds.as_deref(),
         interactive,
     );
-    let mut app_parts = Vec::with_capacity(command_args.len() + 1);
+    let ad_command = format!("{} {ad_command}", shell_join(lifecycle_environment.clone()));
+    let mut app_parts = lifecycle_environment;
     app_parts.push(command.to_string());
     app_parts.extend(command_args.iter().cloned());
-    let app_command = format!(
-        "trap 'status=$?; printf \"%s\\n\" \"$status\" > {}; tmux kill-session -t {}; exit \"$status\"' EXIT; {}",
-        shell_quote(&exit_file.to_string_lossy()),
-        shell_quote(&session),
-        shell_join(app_parts),
-    );
+    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), &session, app_parts);
 
     run_tmux([
         "new-session",
@@ -1644,8 +1727,8 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
     run_tmux([
         "split-window",
         "-v",
-        "-p",
-        &app_percent,
+        "-l",
+        &format!("{app_percent}%"),
         "-t",
         &session,
         "-c",
@@ -1682,6 +1765,23 @@ fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
         .unwrap_or_else(|| attach_status.code().unwrap_or(1));
     let _ = fs::remove_file(exit_file);
     Ok(exit_code)
+}
+
+fn sponsor_app_command(exit_file: &str, session: &str, app_parts: Vec<String>) -> String {
+    // tmux uses the user's default shell. In zsh, `status` is read-only.
+    let exit_trap = format!(
+        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; tmux kill-session -t {}; exit \"$sponsor_exit_code\"",
+        shell_quote(exit_file),
+        shell_quote(session),
+    );
+    format!(
+        // Catch (do not ignore) SIGINT in the supervisory shell. The wrapped
+        // process receives it normally and decides whether to stop or continue;
+        // dash must not exit before recording the wrapped process's status.
+        "trap {} EXIT; trap ':' INT; {}",
+        shell_quote(&exit_trap),
+        shell_join(app_parts)
+    )
 }
 
 fn sponsor_ad_command(
@@ -1793,10 +1893,15 @@ impl SponsorTmux {
 
     // Shrink the sponsor pane to exactly the ad's height so the app below gets
     // every remaining row — no dead space under the ad. Capped at half the
-    // window so an oversized creative can't squeeze the app out.
+    // window (one quarter in protected harness mode) so an oversized creative
+    // can't squeeze the app out.
     fn fit_sponsor_pane(&self, ad_rows: u16) -> Result<()> {
         let height = self.window_height();
-        let rows = ad_rows.clamp(2, (height / 2).max(2)).to_string();
+        let protected = env::var(harness::HARNESS_ENV)
+            .ok()
+            .and_then(|value| harness::Harness::parse(&value))
+            .is_some();
+        let rows = sponsor_pane_rows(ad_rows, height, protected).to_string();
         self.tmux(["resize-pane", "-t", &self.sponsor_target(), "-y", &rows])
     }
 
@@ -1900,6 +2005,11 @@ impl SponsorTmux {
     }
 }
 
+fn sponsor_pane_rows(ad_rows: u16, height: u16, protected: bool) -> u16 {
+    let divisor = if protected { 4 } else { 2 };
+    ad_rows.clamp(2, (height / divisor).max(2))
+}
+
 fn ad_while_working_enabled() -> bool {
     env::var(SPONSOR_AD_WHILE_WORKING_ENV)
         .is_ok_and(|value| value == "1" || value.eq_ignore_ascii_case("true"))
@@ -1911,8 +2021,8 @@ fn ad_while_working_enabled() -> bool {
 ///   away).
 /// - `ad_while_working` trigger (opt-in): the wrapped harness is producing output
 ///   (app pane active within the recent window) while the user is not typing —
-///   i.e. a "loading"/streaming state. This is the harness-agnostic realization
-///   of "show an ad while the tool is loading".
+///   i.e. an activity heuristic, not evidence of loading or safe-to-obscure UI.
+///   The caller disables both triggers throughout explicit harness mode.
 fn should_expand_ad(
     client_idle: Option<Duration>,
     app_pane_idle: Option<Duration>,
@@ -2294,9 +2404,13 @@ fn render_fullscreen_ad(
     frame: u64,
     creative: &AdCreative,
     hovered_cell: Option<(u16, u16)>,
+    activity: Option<&harness::Activity>,
 ) -> Result<()> {
     queue!(stdout, cursor::Hide, terminal::Clear(ClearType::All))?;
-    let lines = ad_lines(creative, layout.cols, layout.rows, frame);
+    let mut lines = ad_lines(creative, layout.cols, layout.rows, frame);
+    if let Some(activity) = activity {
+        add_activity_footer(&mut lines, layout.cols, &activity.label());
+    }
     for row in 0..layout.rows {
         queue!(
             stdout,
@@ -2313,6 +2427,15 @@ fn render_fullscreen_ad(
     }
     stdout.flush()?;
     Ok(())
+}
+
+fn add_activity_footer(lines: &mut [String], cols: u16, label: &str) {
+    // Replace only the non-clickable closing border, never an ad body or app row.
+    if lines.len() > 1 {
+        if let Some(last) = lines.last_mut() {
+            *last = inside_line(usize::from(cols), label);
+        }
+    }
 }
 
 // The ad is a box that hugs its art: the variant is picked by the horizontal
@@ -2673,6 +2796,47 @@ fn clip_ascii(text: &str, width: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn protected_panes_reserve_three_quarters_for_the_harness() {
+        assert_eq!(super::sponsor_pane_rows(100, 40, true), 10);
+        assert_eq!(super::sponsor_pane_rows(100, 40, false), 20);
+        assert_eq!(super::sponsor_pane_rows(4, 40, true), 4);
+        for rows in 0..12 {
+            assert!((2..=3).contains(&super::sponsor_pane_rows(100, rows, true)));
+        }
+    }
+
+    #[test]
+    fn activity_footer_preserves_body_and_stays_inside_narrow_panes() {
+        let creative = super::railway_example_creative();
+        for cols in 0..120 {
+            for rows in 0..45 {
+                let mut lines = super::ad_lines(&creative, cols, rows, 0);
+                let original = lines.clone();
+                super::add_activity_footer(
+                    &mut lines,
+                    cols,
+                    "Claude | recent hook: permission requested",
+                );
+                assert_eq!(lines.len(), original.len());
+                if lines.len() > 1 {
+                    assert_eq!(lines[..lines.len() - 1], original[..original.len() - 1]);
+                    assert!(lines.last().unwrap().chars().count() <= usize::from(cols));
+                    for col in 0..cols {
+                        assert!(super::link_at_column(
+                            lines.last().unwrap(),
+                            &creative,
+                            usize::from(col)
+                        )
+                        .is_none());
+                    }
+                } else {
+                    assert_eq!(lines, original);
+                }
+            }
+        }
+    }
+
     use super::*;
     use std::io::Read;
     use std::net::TcpListener;
@@ -2732,6 +2896,33 @@ mod tests {
     }
 
     #[test]
+    fn app_exit_trap_preserves_failure_in_bash_and_zsh() {
+        for shell in ["/bin/bash", "/bin/zsh"] {
+            if !std::path::Path::new(shell).exists() {
+                continue;
+            }
+            let exit_file = env::temp_dir().join(format!(
+                "sponsor exit 'quoted'-{}-{}.status",
+                std::process::id(),
+                shell.rsplit('/').next().unwrap()
+            ));
+            let command = sponsor_app_command(
+                &exit_file.to_string_lossy(),
+                "test-session",
+                vec!["/bin/sh".into(), "-c".into(), "exit 37".into()],
+            );
+            let output = Command::new(shell)
+                .args(["-c", &format!("tmux() {{ :; }}; {command}")])
+                .output()
+                .unwrap();
+            assert_eq!(output.status.code(), Some(37), "{shell}: {output:?}");
+            assert!(output.stderr.is_empty(), "{shell}: {output:?}");
+            assert_eq!(fs::read_to_string(&exit_file).unwrap(), "37\n");
+            fs::remove_file(exit_file).unwrap();
+        }
+    }
+
+    #[test]
     fn ad_expands_on_long_user_idle_regardless_of_mode() {
         let delay = Duration::from_secs(30);
         // User idle past the delay → expand, whether or not the working mode is on.
@@ -2757,30 +2948,30 @@ mod tests {
     }
 
     #[test]
-    fn ad_while_working_expands_during_a_loading_state_only() {
+    fn legacy_activity_heuristic_cannot_distinguish_loading_from_streaming() {
         let delay = Duration::from_secs(30);
-        // Harness working (app pane active 1s ago) + user waiting (idle 3s) → expand.
+        // Any recent output plus idle input triggers this legacy heuristic.
         assert!(should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(1)),
             delay,
             true,
         ));
-        // User actively typing (idle 0s) → not a loading state, do not expand.
+        // User actively typing (idle 0s) → do not expand.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(0)),
             Some(Duration::from_secs(1)),
             delay,
             true,
         ));
-        // Harness not producing output (app pane idle 10s) → not loading.
+        // No recent output → activity heuristic does not trigger.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(10)),
             delay,
             true,
         ));
-        // Same loading signals but the opt-in mode is OFF → do not expand.
+        // Same activity signals but the opt-in mode is OFF → do not expand.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(1)),

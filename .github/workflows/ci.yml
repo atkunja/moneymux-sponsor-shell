@@ -25,6 +25,11 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
+      - name: Install offline PTY test dependency
+        run: sudo apt-get update && sudo apt-get install -y tmux
+      - run: cargo build --locked
+      - name: Protected harness PTY acceptance (no provider accounts)
+        run: python3 scripts/test-harness-pty.py target/debug/sponsor-shell
 
   npm-launcher:
     name: npm launcher

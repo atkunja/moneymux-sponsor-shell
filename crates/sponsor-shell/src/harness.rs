@@ -1,0 +1,492 @@
+//! Optional, local-only harness activity. These hints are never visibility or billing evidence.
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::io::Read;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+use std::os::unix::net::UnixDatagram;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn now_ms() -> Option<u64> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis()
+        .try_into()
+        .ok()
+}
+
+/// Hook failures must not change permissions, model context or harness exit status.
+pub fn emit(harness: Harness) {
+    let Some(path) = std::env::var_os(SOCKET_ENV) else {
+        return;
+    };
+    if std::env::var(HARNESS_ENV).ok().as_deref() != Some(harness.command()) {
+        return;
+    }
+    let Some(hint) = read_hint(harness, std::io::stdin().lock()) else {
+        return;
+    };
+    let _ = send_hint(Path::new(&path), &hint);
+}
+
+fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
+    let socket = UnixDatagram::unbound()?;
+    socket.set_nonblocking(true)?;
+    socket.connect(path)?;
+    let bytes = serde_json::to_vec(hint).map_err(std::io::Error::other)?;
+    socket.send(&bytes)?;
+    Ok(())
+}
+
+const HINT_LEASE_MS: u64 = 10_000;
+
+pub struct Activity {
+    harness: Harness,
+    socket: Option<UnixDatagram>,
+    latest: Option<Hint>,
+}
+
+impl Activity {
+    pub fn from_env() -> Option<Self> {
+        let harness = Harness::parse(&std::env::var(HARNESS_ENV).ok()?)?;
+        let socket =
+            std::env::var_os(SOCKET_ENV).and_then(|path| Self::bind(Path::new(&path)).ok());
+        Some(Self {
+            harness,
+            socket,
+            latest: None,
+        })
+    }
+
+    fn bind(path: &Path) -> std::io::Result<UnixDatagram> {
+        let socket = UnixDatagram::bind(path)?;
+        socket.set_nonblocking(true)?;
+        Ok(socket)
+    }
+
+    pub fn poll(&mut self) {
+        let Some(socket) = &self.socket else { return };
+        let Some(now) = now_ms() else {
+            self.latest = None;
+            return;
+        };
+        // Bound every frame's work even if a local process floods the socket.
+        for _ in 0..64 {
+            let mut bytes = [0_u8; 256];
+            let Ok(size) = socket.recv(&mut bytes) else {
+                break;
+            };
+            let Ok(hint) = serde_json::from_slice::<Hint>(&bytes[..size]) else {
+                continue;
+            };
+            if hint.harness == self.harness
+                && valid_hint(&hint, now)
+                && self
+                    .latest
+                    .as_ref()
+                    .is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
+            {
+                self.latest = Some(hint);
+            }
+        }
+    }
+
+    pub fn label(&self) -> String {
+        self.label_at(now_ms().unwrap_or(0))
+    }
+
+    fn label_at(&self, now: u64) -> String {
+        let recent = self
+            .latest
+            .as_ref()
+            .filter(|hint| valid_hint(hint, now))
+            .and_then(|hint| event_label(&hint.event));
+        match recent {
+            Some(label) => format!("{} | recent hook: {label}", self.harness.label()),
+            None => format!("{} | activity unavailable", self.harness.label()),
+        }
+    }
+}
+
+fn valid_hint(hint: &Hint, now: u64) -> bool {
+    events(hint.harness).contains(&hint.event.as_str())
+        && now
+            .checked_sub(hint.sent_at_ms)
+            .is_some_and(|age| age < HINT_LEASE_MS)
+}
+
+/// Print-only configuration: never overwrite existing hooks or bypass their trust review.
+pub fn hook_configuration(harness: Harness, executable: &str) -> serde_json::Value {
+    let command = crate::shell_join([
+        executable.to_string(),
+        "harness-event".to_string(),
+        harness.command().to_string(),
+    ]);
+    let mut hooks = serde_json::Map::new();
+    for event in events(harness) {
+        hooks.insert(
+            event.to_string(),
+            serde_json::json!([{
+                "hooks": [{"type": "command", "command": command, "timeout": 1}]
+            }]),
+        );
+    }
+    serde_json::json!({"hooks": hooks})
+}
+
+/// Only the wrapper owns this directory. No global hook log or session registry.
+pub struct BridgeDirectory {
+    path: PathBuf,
+}
+
+impl BridgeDirectory {
+    pub fn create() -> std::io::Result<Self> {
+        Self::create_under(&std::env::temp_dir())
+    }
+
+    fn create_under(parent: &Path) -> std::io::Result<Self> {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(std::io::Error::other)?
+            .as_nanos();
+        for attempt in 0..32 {
+            let path = parent.join(format!("mmh-{}-{nonce:x}-{attempt:x}", std::process::id()));
+            match fs::DirBuilder::new().mode(0o700).create(&path) {
+                Ok(()) => return Ok(Self { path }),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "hook directory collision",
+        ))
+    }
+
+    pub fn socket_path(&self) -> PathBuf {
+        self.path.join("events")
+    }
+}
+
+impl Drop for BridgeDirectory {
+    fn drop(&mut self) {
+        // Remove only our known socket and the empty directory, never recursively.
+        let _ = fs::remove_file(self.socket_path());
+        let _ = fs::remove_dir(&self.path);
+    }
+}
+
+const MAX_INPUT_BYTES: u64 = 64 * 1024;
+
+#[derive(Deserialize)]
+struct HookInput {
+    hook_event_name: String,
+    // All other fields (including prompts, transcripts, paths and tool input)
+    // are discarded by serde; none are retained in the local message.
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct Hint {
+    harness: Harness,
+    event: String,
+    sent_at_ms: u64,
+}
+
+fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
+    let mut bytes = Vec::new();
+    reader
+        .take(MAX_INPUT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > MAX_INPUT_BYTES {
+        return None;
+    }
+    let input: HookInput = serde_json::from_slice(&bytes).ok()?;
+    if !events(harness).contains(&input.hook_event_name.as_str()) {
+        return None;
+    }
+    Some(Hint {
+        harness,
+        event: input.hook_event_name,
+        sent_at_ms: now_ms()?,
+    })
+}
+
+pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
+pub const SOCKET_ENV: &str = "SPONSOR_SHELL_HOOK_SOCKET";
+
+pub fn executable(harness: Harness) -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH")?;
+    let cwd = std::env::current_dir().ok()?;
+    std::env::split_paths(&paths).find_map(|directory| {
+        let path = cwd.join(directory).join(harness.command());
+        let metadata = fs::metadata(&path).ok()?;
+        (metadata.is_file() && metadata.permissions().mode() & 0o111 != 0).then_some(path)
+    })
+}
+
+pub fn environment(harness: Option<Harness>, socket: Option<&Path>) -> Vec<String> {
+    // Do not inherit an unrelated wrapper's bridge from a long-lived tmux server.
+    let mut args = vec![
+        "env".into(),
+        "-u".into(),
+        HARNESS_ENV.into(),
+        "-u".into(),
+        SOCKET_ENV.into(),
+    ];
+    if let (Some(harness), Some(socket)) = (harness, socket) {
+        args.push(format!("{HARNESS_ENV}={}", harness.command()));
+        args.push(format!("{SOCKET_ENV}={}", socket.to_string_lossy()));
+    }
+    args
+}
+
+const COMMON_EVENTS: &[&str] = &[
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "Stop",
+    "SessionEnd",
+];
+
+pub fn events(harness: Harness) -> Vec<&'static str> {
+    let mut names = COMMON_EVENTS.to_vec();
+    match harness {
+        Harness::Claude => names.extend(["Notification", "PostToolUseFailure"]),
+        Harness::Codex => names.push("Interrupt"),
+    }
+    names
+}
+
+fn event_label(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "SessionStart" => "session started",
+        "UserPromptSubmit" => "prompt submitted",
+        "PreToolUse" => "tool requested",
+        "PermissionRequest" => "permission requested",
+        "PostToolUse" => "tool finished",
+        "PostToolUseFailure" => "tool failed",
+        "Notification" => "notification",
+        "Stop" => "turn stopped",
+        "Interrupt" => "turn interrupted",
+        "SessionEnd" => "session ended",
+        _ => return None,
+    })
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum Harness {
+    Claude,
+    Codex,
+}
+
+impl Harness {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "claude" => Some(Self::Claude),
+            "codex" => Some(Self::Codex),
+            _ => None,
+        }
+    }
+
+    pub fn command(self) -> &'static str {
+        match self {
+            Self::Claude => "claude",
+            Self::Codex => "codex",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Claude => "Claude",
+            Self::Codex => "Codex",
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn private_channels_are_unique_and_cleanup_only_owned_files() {
+        let first = BridgeDirectory::create().unwrap();
+        let second = BridgeDirectory::create().unwrap();
+        assert_ne!(first.path, second.path);
+        assert_eq!(
+            fs::metadata(&first.path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let socket = Activity::bind(&first.socket_path()).unwrap();
+        let path = first.path.clone();
+        drop(socket);
+        drop(first);
+        assert!(!path.exists());
+        let foreign = second.path.join("not-ours");
+        fs::write(&foreign, "preserve").unwrap();
+        let path = second.path.clone();
+        drop(second);
+        assert_eq!(fs::read_to_string(&foreign).unwrap(), "preserve");
+        fs::remove_file(foreign).unwrap();
+        fs::remove_dir(path).unwrap();
+    }
+
+    #[test]
+    fn independent_socket_channels_do_not_cross_sessions() {
+        let first = BridgeDirectory::create().unwrap();
+        let second = BridgeDirectory::create().unwrap();
+        let mut activity = Activity {
+            harness: Harness::Codex,
+            socket: Some(Activity::bind(&first.socket_path()).unwrap()),
+            latest: None,
+        };
+        let mut other = Activity {
+            harness: Harness::Codex,
+            socket: Some(Activity::bind(&second.socket_path()).unwrap()),
+            latest: None,
+        };
+        let hint = read_hint(
+            Harness::Codex,
+            br#"{"hook_event_name":"Interrupt"}"#.as_slice(),
+        )
+        .unwrap();
+        send_hint(&first.socket_path(), &hint).unwrap();
+        activity.poll();
+        other.poll();
+        assert_eq!(activity.label(), "Codex | recent hook: turn interrupted");
+        assert_eq!(other.label(), "Codex | activity unavailable");
+        assert!(send_hint(&first.path.join("absent"), &hint).is_err());
+    }
+
+    #[test]
+    fn hints_expire_at_the_boundary_and_reject_future_timestamps() {
+        let hint = Hint {
+            harness: Harness::Claude,
+            event: "PermissionRequest".into(),
+            sent_at_ms: 20_000,
+        };
+        assert!(!valid_hint(&hint, 19_999));
+        assert!(valid_hint(&hint, 20_000));
+        assert!(valid_hint(&hint, 29_999));
+        assert!(!valid_hint(&hint, 30_000));
+        let activity = Activity {
+            harness: Harness::Claude,
+            socket: None,
+            latest: Some(hint),
+        };
+        assert_eq!(
+            activity.label_at(20_000),
+            "Claude | recent hook: permission requested"
+        );
+        assert_eq!(activity.label_at(30_000), "Claude | activity unavailable");
+    }
+
+    #[test]
+    fn malformed_foreign_and_expired_datagrams_cannot_set_activity() {
+        let bridge = BridgeDirectory::create().unwrap();
+        let mut activity = Activity {
+            harness: Harness::Claude,
+            socket: Some(Activity::bind(&bridge.socket_path()).unwrap()),
+            latest: None,
+        };
+        let socket = UnixDatagram::unbound().unwrap();
+        socket.connect(bridge.socket_path()).unwrap();
+        for bytes in [
+            "not json",
+            r#"{"harness":"claude","event":"Stop","sent_at_ms":0,"prompt":"private"}"#,
+        ] {
+            socket.send(bytes.as_bytes()).unwrap();
+        }
+        for (harness, event, sent_at_ms) in [
+            (Harness::Codex, "Stop", now_ms().unwrap()),
+            (Harness::Claude, "Stop", 0),
+            (Harness::Claude, "Stop", u64::MAX),
+            (Harness::Claude, "\u{1b}[2J", now_ms().unwrap()),
+        ] {
+            send_hint(
+                &bridge.socket_path(),
+                &Hint {
+                    harness,
+                    event: event.into(),
+                    sent_at_ms,
+                },
+            )
+            .unwrap();
+        }
+        activity.poll();
+        assert_eq!(activity.label(), "Claude | activity unavailable");
+    }
+
+    #[test]
+    fn only_explicit_supported_harness_names_are_accepted() {
+        assert_eq!(Harness::parse("claude"), Some(Harness::Claude));
+        assert_eq!(Harness::parse("codex"), Some(Harness::Codex));
+        for name in ["", "CODEX", "claude --yes", "../codex", "bash"] {
+            assert_eq!(Harness::parse(name), None);
+        }
+    }
+
+    #[test]
+    fn generated_hooks_quote_the_binary_and_never_emit_policy_overrides() {
+        for harness in [Harness::Claude, Harness::Codex] {
+            let config = hook_configuration(harness, "/tmp/a b/'quoted'/sponsor-shell");
+            assert_eq!(config.as_object().unwrap().len(), 1);
+            let hooks = config["hooks"].as_object().unwrap();
+            assert_eq!(hooks.len(), events(harness).len());
+            for (event, groups) in hooks {
+                assert!(events(harness).contains(&event.as_str()));
+                assert!(event_label(event).is_some());
+                let handler = &groups[0]["hooks"][0];
+                assert_eq!(handler.as_object().unwrap().len(), 3);
+                assert_eq!(handler["type"], "command");
+                assert_eq!(handler["timeout"], 1);
+                assert_eq!(
+                    handler["command"],
+                    format!(
+                        "'/tmp/a b/'\\''quoted'\\''/sponsor-shell' harness-event {}",
+                        harness.command()
+                    )
+                );
+            }
+            assert!(!config.to_string().contains("async"));
+            assert!(!config.to_string().contains("permissionDecision"));
+        }
+    }
+
+    #[test]
+    fn environment_clears_inherited_channels_before_optional_session_binding() {
+        let cleared = vec!["env", "-u", HARNESS_ENV, "-u", SOCKET_ENV];
+        assert_eq!(environment(None, None), cleared);
+        assert_eq!(environment(Some(Harness::Codex), None), cleared);
+        let configured = environment(Some(Harness::Claude), Some(Path::new("/tmp/a b/events")));
+        assert_eq!(configured[..5], cleared);
+        assert_eq!(configured[5], format!("{HARNESS_ENV}=claude"));
+        assert_eq!(configured[6], format!("{SOCKET_ENV}=/tmp/a b/events"));
+    }
+
+    #[test]
+    fn hooks_discard_sensitive_fields_and_reject_unknown_events() {
+        let input = br#"{"hook_event_name":"UserPromptSubmit","prompt":"secret","cwd":"/private","tool_input":{"password":"private"},"transcript_path":"/secret"}"#;
+        let hint = read_hint(Harness::Claude, &input[..]).unwrap();
+        let value = serde_json::to_value(&hint).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 3);
+        assert_eq!(value["harness"], "claude");
+        assert_eq!(value["event"], "UserPromptSubmit");
+        assert!(value["sent_at_ms"].is_u64());
+        for input in [r#"{"hook_event_name":"Forged"}"#, "invalid", "{}", "[]"] {
+            assert!(read_hint(Harness::Claude, input.as_bytes()).is_none());
+        }
+        assert!(read_hint(Harness::Claude, &vec![b' '; 65537][..]).is_none());
+        assert!(read_hint(
+            Harness::Claude,
+            br#"{"hook_event_name":"Interrupt"}"#.as_slice()
+        )
+        .is_none());
+    }
+}

@@ -52,6 +52,19 @@ sponsor-shell claude
 sponsor-shell bash
 ```
 
+The current source also offers opt-in protected harness sessions:
+
+```sh
+sponsor-shell harness claude
+sponsor-shell harness codex
+```
+
+These keep the ad in a side pane instead of automatically covering the harness.
+Optional local hooks add short-lived activity labels without sending prompts or
+tool output to MoneyMux. See [HARNESS_INTEGRATION.md](HARNESS_INTEGRATION.md) for
+manual setup, privacy, supported behavior and testing. These new commands are
+unreleased and are not yet included in the npm 0.1.3 package above.
+
 Sponsor Shell supports macOS and Linux on arm64 and x64. `tmux` is required.
 When it is missing, normal execution stops with installation guidance. Install
 it yourself, or explicitly authorize a supported package manager with:
