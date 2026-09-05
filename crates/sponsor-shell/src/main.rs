@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -306,6 +306,34 @@ fn run() -> Result<i32> {
                 harness::emit(harness);
             }
         }
+        return Ok(0);
+    }
+    if args.first().is_some_and(|arg| arg == "claude-status-line") {
+        // Claude Code sends session JSON on stdin: transcript path, working
+        // directory, repository owner and name, session id and name, prompt id,
+        // session cost, rate-limit consumption. An advertisement needs none of
+        // it. Drain it so the writer never blocks on a full pipe, then discard
+        // it without parsing; nothing here reaches the network.
+        let mut discarded = Vec::new();
+        let _ = io::stdin().lock().read_to_end(&mut discarded);
+        drop(discarded);
+        // No request on this path. Updates debounce at 300ms and Claude Code
+        // kills an in-flight command when a new one arrives, so a fetch here
+        // could not be retried and would delay the user's own status line.
+        if let Some(line) = load_ad_creative().as_ref().and_then(claude_status_line) {
+            println!("{line}");
+        }
+        return Ok(0);
+    }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "claude-status-line-setup")
+    {
+        let executable = env::current_exe().context("failed to locate sponsor-shell")?;
+        let executable = executable
+            .to_str()
+            .context("status line executable path must be UTF-8")?;
+        print!("{}", claude_status_line_setup(executable));
         return Ok(0);
     }
     if args.first().is_some_and(|arg| arg == "harness-hooks") {
@@ -900,6 +928,77 @@ fn device_token() -> Option<String> {
 
 fn default_ad_creative() -> AdCreative {
     railway_example_creative()
+}
+
+/// Print-only setup guidance for the Claude status line.
+///
+/// Prints what it costs before it prints the configuration. Claude Code drops
+/// most built-in footer hints once any custom status line is configured,
+/// including `esc to interrupt` — the documented way to stop a running model.
+/// Trading that away for an advertisement is a decision the user makes, not one
+/// this tool makes quietly on their behalf, so the trade is stated first and the
+/// removal instructions are stated last.
+fn claude_status_line_setup(executable: &str) -> String {
+    let command = crate::shell_join([executable.to_string(), "claude-status-line".to_string()]);
+    let settings = serde_json::json!({
+        "statusLine": { "type": "command", "command": command },
+    });
+    format!(
+        "Before you install this, know what it costs:\n\
+         \n\
+         - Claude Code hides most built-in footer hints once any custom status\n\
+         \x20 line is configured, including `esc to interrupt`. That is the\n\
+         \x20 documented way to stop a running model, and it will stop being\n\
+         \x20 shown to you.\n\
+         - It replaces any status line you already have. Merge this into your\n\
+         \x20 existing configuration rather than overwriting the file.\n\
+         - It shows a sponsor name and link only. It is not a billable\n\
+         \x20 impression: the command runs even while the status line is hidden.\n\
+         \n\
+         It reads the session JSON Claude Code sends on stdin and discards it\n\
+         without parsing. Nothing from it is stored or sent anywhere, and this\n\
+         command makes no network request at all.\n\
+         \n\
+         Add to the `statusLine` key of your chosen Claude settings file:\n\
+         \n\
+         {}\n\
+         \n\
+         To remove it, delete that `statusLine` key. Nothing else is installed\n\
+         and no background process is left running.\n",
+        serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
+    )
+}
+
+/// One sponsored status-line row for Claude Code, or nothing.
+///
+/// Claude Code renders whatever this prints beneath its own footer, so the
+/// output is deliberately a single short row: a disclosure, the sponsor, and an
+/// OSC 8 link. Returning `None` prints nothing at all, which is the correct
+/// state whenever there is no approved creative — an empty advertisement is
+/// better than a placeholder occupying the user's screen forever.
+///
+/// This is not a billable impression and never reports one. The status line can
+/// be hidden by prompts and menus while the command still runs, so invocation
+/// proves nothing about visibility. Impressions stay with the sidecar, which can
+/// observe its own pane.
+fn claude_status_line(creative: &AdCreative) -> Option<String> {
+    // The disabled placeholder is a local editor prompt, not inventory.
+    if creative.id == "local-disabled" {
+        return None;
+    }
+    let sponsor = sanitize_terminal_text(&creative.sponsor);
+    let sponsor = sponsor.trim();
+    if sponsor.is_empty() {
+        return None;
+    }
+    let url = canonical_https_url(&creative.url);
+    // Bounded so a long sponsor name cannot push the row past a narrow
+    // terminal, and so nothing here can be used to smuggle a payload.
+    let sponsor = truncate_chars(sponsor, 40);
+    Some(format!(
+        "Sponsored: {}",
+        terminal_hyperlink(&sponsor, &url, false)
+    ))
 }
 
 fn ad_file_path() -> PathBuf {
@@ -3366,6 +3465,92 @@ mod tests {
             &mut sequence,
             1_000,
         ));
+    }
+
+    #[test]
+    fn the_status_line_is_one_disclosed_row_with_a_clickable_sponsor() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        assert!(line.starts_with("Sponsored: "), "{line}");
+        assert!(!line.contains('\n'), "must stay one row: {line}");
+        // Forced https, so a creative cannot smuggle another scheme into the
+        // link the user is invited to click.
+        assert!(line.contains("https://railway.app"), "{line}");
+        assert!(line.contains("Railway"), "{line}");
+    }
+
+    // Nothing is better than a placeholder occupying the user's screen forever.
+    #[test]
+    fn no_inventory_prints_nothing() {
+        assert!(claude_status_line(&inactive_creative()).is_none());
+        let unnamed = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "   ".into(),
+            ..inactive_creative()
+        };
+        assert!(claude_status_line(&unnamed).is_none());
+    }
+
+    #[test]
+    fn a_long_sponsor_name_cannot_overrun_a_narrow_terminal() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "S".repeat(500),
+            url: "example.test".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        // Exactly the bound, not merely "shorter": the disclosure word supplies
+        // its own S, so counting letters would have measured the wrong thing.
+        assert!(line.contains(&"S".repeat(40)), "{line}");
+        assert!(!line.contains(&"S".repeat(41)), "{line}");
+    }
+
+    // The row is written straight into the user's terminal, so a creative must
+    // not be able to move the cursor, clear the screen or forge a link.
+    #[test]
+    fn a_hostile_creative_cannot_inject_escape_sequences() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Evil\u{1b}[2Jname\nsecond row".into(),
+            url: "example.test".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        assert!(!line.contains("\u{1b}[2J"), "{line:?}");
+        assert!(!line.contains('\n'), "{line:?}");
+    }
+
+    // Someone who runs setup must learn the cost before the configuration, not
+    // discover it when `esc to interrupt` stops appearing mid-turn.
+    #[test]
+    fn setup_states_the_interrupt_cost_before_the_configuration() {
+        let output = claude_status_line_setup("/tmp/sponsor-shell");
+        let cost = output
+            .find("esc to interrupt")
+            .expect("cost must be stated");
+        let config = output
+            .find("\"statusLine\"")
+            .expect("config must be printed");
+        assert!(cost < config, "the cost has to come first");
+        assert!(output.contains("delete that `statusLine` key"), "{output}");
+        assert!(output.contains("not a billable"), "{output}");
+    }
+
+    #[test]
+    fn setup_quotes_a_path_with_spaces_and_only_prints() {
+        let output = claude_status_line_setup("/tmp/my sponsor/sponsor-shell");
+        assert!(
+            output.contains("'/tmp/my sponsor/sponsor-shell' claude-status-line"),
+            "{output}"
+        );
+        // Print-only: it must never claim to have written anything.
+        assert!(!output.to_lowercase().contains("installed to"), "{output}");
     }
 
     #[test]
