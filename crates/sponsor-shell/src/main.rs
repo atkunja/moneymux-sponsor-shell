@@ -1682,7 +1682,11 @@ fn run_tmux_shell(
     let cwd = env::current_dir().context("failed to read current directory")?;
     let exit_file = env::temp_dir().join(format!("{session}.status"));
     let _ = fs::remove_file(&exit_file);
-    let app_percent = app_pane_percent();
+    let app_percent = if harness.is_some() {
+        DEFAULT_APP_PANE_PERCENT.to_string()
+    } else {
+        app_pane_percent()
+    };
     let wrapped_command = wrapped_command_label(command, command_args);
     let idle_fullscreen_seconds =
         idle_fullscreen_delay_from_env().map(|seconds| seconds.to_string());
@@ -1888,7 +1892,11 @@ impl SponsorTmux {
     // window so an oversized creative can't squeeze the app out.
     fn fit_sponsor_pane(&self, ad_rows: u16) -> Result<()> {
         let height = self.window_height();
-        let rows = ad_rows.clamp(2, (height / 2).max(2)).to_string();
+        let protected = env::var(harness::HARNESS_ENV)
+            .ok()
+            .and_then(|value| harness::Harness::parse(&value))
+            .is_some();
+        let rows = sponsor_pane_rows(ad_rows, height, protected).to_string();
         self.tmux(["resize-pane", "-t", &self.sponsor_target(), "-y", &rows])
     }
 
@@ -1990,6 +1998,11 @@ impl SponsorTmux {
             anyhow::bail!("tmux query failed with status {}", output.status)
         }
     }
+}
+
+fn sponsor_pane_rows(ad_rows: u16, height: u16, protected: bool) -> u16 {
+    let divisor = if protected { 4 } else { 2 };
+    ad_rows.clamp(2, (height / divisor).max(2))
 }
 
 fn ad_while_working_enabled() -> bool {
@@ -2778,6 +2791,47 @@ fn clip_ascii(text: &str, width: usize) -> &str {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn protected_panes_reserve_three_quarters_for_the_harness() {
+        assert_eq!(super::sponsor_pane_rows(100, 40, true), 10);
+        assert_eq!(super::sponsor_pane_rows(100, 40, false), 20);
+        assert_eq!(super::sponsor_pane_rows(4, 40, true), 4);
+        for rows in 0..12 {
+            assert!((2..=3).contains(&super::sponsor_pane_rows(100, rows, true)));
+        }
+    }
+
+    #[test]
+    fn activity_footer_preserves_body_and_stays_inside_narrow_panes() {
+        let creative = super::railway_example_creative();
+        for cols in 0..120 {
+            for rows in 0..45 {
+                let mut lines = super::ad_lines(&creative, cols, rows, 0);
+                let original = lines.clone();
+                super::add_activity_footer(
+                    &mut lines,
+                    cols,
+                    "Claude | recent hook: permission requested",
+                );
+                assert_eq!(lines.len(), original.len());
+                if lines.len() > 1 {
+                    assert_eq!(lines[..lines.len() - 1], original[..original.len() - 1]);
+                    assert!(lines.last().unwrap().chars().count() <= usize::from(cols));
+                    for col in 0..cols {
+                        assert!(super::link_at_column(
+                            lines.last().unwrap(),
+                            &creative,
+                            usize::from(col)
+                        )
+                        .is_none());
+                    }
+                } else {
+                    assert_eq!(lines, original);
+                }
+            }
+        }
+    }
+
     use super::*;
     use std::io::Read;
     use std::net::TcpListener;
