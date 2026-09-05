@@ -1,6 +1,23 @@
 use super::*;
 
 #[test]
+fn short_preview_link_is_navigable_and_footer_has_no_hit_target() {
+    let creative = default_ad_creative();
+    let layout = Layout::new(80, 6);
+    let mut lines = ad_lines(&creative, layout.cols, layout.rows, 0);
+    let row = lines.iter().position(|line| line.contains(&creative.url)).unwrap();
+    let col = lines[row].find(&creative.url).unwrap() + 4;
+    assert_eq!(link_at_cell(&creative, layout, 0, row as u16, col as u16), Some(creative.url.clone()));
+    assert!(linkified_line(&lines[row], &creative, None).contains("\x1b]8;;https://railway.app"));
+    let footer = lines.len() - 1;
+    add_activity_footer(&mut lines, layout.cols, "Claude | activity unavailable");
+    assert!(lines[row].contains(&creative.url));
+    for col in 0..layout.cols {
+        assert_eq!(link_at_cell(&creative, layout, 0, footer as u16, col), None);
+    }
+}
+
+#[test]
 fn cramped_preview_is_hidden_instead_of_cropping_a_link() {
     let creative = default_ad_creative();
     for (cols, rows) in [(80, 4), (12, 10), (48, 3)] {
