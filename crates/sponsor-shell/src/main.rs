@@ -1624,6 +1624,11 @@ fn run_sponsor_pane() -> Result<()> {
 fn run_tmux_shell(command: &str, command_args: &[String], harness: Option<harness::Harness>) -> Result<i32> {
     ensure_tmux_available()?;
 
+    let bridge = harness.map(|_| harness::BridgeDirectory::create()).transpose()
+        .context("failed to create private harness hook channel")?;
+    let socket_path = bridge.as_ref().map(harness::BridgeDirectory::socket_path);
+    let lifecycle_environment = harness::environment(harness, socket_path.as_deref());
+
     let session = format!("sponsor-shell-{}", std::process::id());
     let _session_guard = TmuxSessionGuard::new(session.clone());
     let current_exe = env::current_exe().context("failed to locate sponsor-shell executable")?;
@@ -1647,7 +1652,8 @@ fn run_tmux_shell(command: &str, command_args: &[String], harness: Option<harnes
         idle_fullscreen_seconds.as_deref(),
         interactive,
     );
-    let mut app_parts = Vec::with_capacity(command_args.len() + 1);
+    let ad_command = format!("{} {ad_command}", shell_join(lifecycle_environment.clone()));
+    let mut app_parts = lifecycle_environment;
     app_parts.push(command.to_string());
     app_parts.extend(command_args.iter().cloned());
     let app_command = format!(

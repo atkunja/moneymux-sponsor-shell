@@ -170,6 +170,16 @@ fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
 pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
 pub const SOCKET_ENV: &str = "SPONSOR_SHELL_HOOK_SOCKET";
 
+pub fn environment(harness: Option<Harness>, socket: Option<&Path>) -> Vec<String> {
+    // Do not inherit an unrelated wrapper's bridge from a long-lived tmux server.
+    let mut args = vec!["env".into(), "-u".into(), HARNESS_ENV.into(), "-u".into(), SOCKET_ENV.into()];
+    if let (Some(harness), Some(socket)) = (harness, socket) {
+        args.push(format!("{HARNESS_ENV}={}", harness.command()));
+        args.push(format!("{SOCKET_ENV}={}", socket.to_string_lossy()));
+    }
+    args
+}
+
 const COMMON_EVENTS: &[&str] = &[
     "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
     "PostToolUse", "Stop", "SessionEnd",
