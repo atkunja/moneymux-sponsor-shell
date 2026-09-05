@@ -1,6 +1,21 @@
 use super::*;
 
 #[test]
+fn short_panes_never_queue_or_consume_an_impression_sequence() {
+    let mut creative = default_ad_creative();
+    creative.ad_decision_id = Some("signed-preview".into());
+    creative.decision_token = Some("fixture-token".into());
+    let mut pending = Vec::new();
+    let mut sequence = 7;
+    for rows in [1, 2, 4, 6] {
+        assert!(!enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
+            &mut pending, Layout::new(80, rows), &mut sequence, 60_000));
+    }
+    assert!(pending.is_empty());
+    assert_eq!(sequence, 7);
+}
+
+#[test]
 fn short_preview_link_is_navigable_and_footer_has_no_hit_target() {
     let creative = default_ad_creative();
     let layout = Layout::new(80, 6);
