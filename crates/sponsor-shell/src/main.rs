@@ -3910,6 +3910,11 @@ mod tests {
         assert_eq!(selected.id, "local-approved");
     }
 
+    #[test]
+    fn spinner_setup_does_not_invent_inventory() {
+        assert!(select_claude_spinner_creative(None, None).is_none());
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
