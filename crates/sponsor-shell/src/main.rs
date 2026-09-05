@@ -3679,6 +3679,64 @@ mod tests {
         assert!(!elsewhere.contains("\x1b[4m"), "{elsewhere}");
     }
 
+    fn status_error(code: u16) -> anyhow::Error {
+        anyhow::Error::new(ureq::Error::StatusCode(code))
+    }
+
+    // The server refusing a payload is the one failure resending cannot fix.
+    #[test]
+    fn a_rejected_payload_is_not_retried() {
+        for code in [400, 401, 403, 404, 409, 422] {
+            assert!(is_permanent_rejection(&status_error(code)), "{code}");
+        }
+    }
+
+    // "Later" and "my fault" both deserve another attempt.
+    #[test]
+    fn transient_failures_stay_retryable() {
+        for code in [408, 429, 500, 502, 503, 504] {
+            assert!(!is_permanent_rejection(&status_error(code)), "{code}");
+        }
+        // A timeout or dropped connection carries no status at all.
+        assert!(!is_permanent_rejection(&anyhow::anyhow!(
+            "connection reset"
+        )));
+    }
+
+    // A refusal must not be recorded as delivered: nothing was billed, and the
+    // completed set is consulted to decide whether an impression already
+    // reached the ledger.
+    #[test]
+    fn a_refusal_exhausts_rather_than_reporting_delivered() {
+        let mut pending = vec![PendingEventReport {
+            key: "decision-1".into(),
+            path: IMPRESSION_EVENT_PATH,
+            body: "{}".into(),
+            in_flight: true,
+            next_attempt_at: Instant::now(),
+            created_at: Instant::now(),
+            attempts: 0,
+        }];
+        let (result_tx, result_rx) = mpsc::channel();
+        let (send_tx, _send_rx) = mpsc::channel();
+        result_tx
+            .send(("decision-1".to_string(), ReportOutcome::Refused))
+            .unwrap();
+        let mut reported = HashSet::new();
+        let mut exhausted = HashSet::new();
+        pump_impression_reports(
+            &mut pending,
+            &mut reported,
+            &mut exhausted,
+            &result_rx,
+            &send_tx,
+        );
+
+        assert!(pending.is_empty(), "must stop retrying");
+        assert!(exhausted.contains("decision-1"));
+        assert!(!reported.contains("decision-1"), "refused is not delivered");
+    }
+
     #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
