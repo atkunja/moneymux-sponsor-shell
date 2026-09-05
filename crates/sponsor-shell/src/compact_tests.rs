@@ -1,6 +1,20 @@
 use super::*;
 
 #[test]
+fn visibility_restarts_after_hidden_or_changed_geometry() {
+    let creative = default_ad_creative();
+    let full = Layout::new(80, 24);
+    let mut previous = None;
+    assert!(visibility_geometry_changed(&mut previous, &creative, full));
+    assert!(!visibility_geometry_changed(&mut previous, &creative, full));
+    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(80, 6)));
+    assert!(previous.is_none());
+    assert!(visibility_geometry_changed(&mut previous, &creative, full));
+    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(81, 24)));
+    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(81, 25)));
+}
+
+#[test]
 fn full_creative_keeps_original_signed_geometry_and_minimum_duration() {
     let mut creative = default_ad_creative();
     creative.ad_decision_id = Some("full-decision".into());
