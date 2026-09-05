@@ -1072,6 +1072,9 @@ fn enqueue_impression_if_needed(
     next_render_sequence: &mut u64,
     visible_duration_ms: u128,
 ) -> bool {
+    if !full_creative_fits(creative, layout) || visible_duration_ms < MIN_RENDERED_VISIBLE_DURATION.as_millis() {
+        return false;
+    }
     let Some(ad_decision_id) = &creative.ad_decision_id else {
         return false;
     };
