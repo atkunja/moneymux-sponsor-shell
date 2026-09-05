@@ -78,7 +78,8 @@ disclosure is part of the line.
 ```
 
 Print-only. It emits the JSON to merge into your own settings and never writes a
-file.
+file. A linked terminal asks MoneyMux for current eligible inventory when the
+command runs; an unlinked terminal can still use an injected local creative.
 
 Two deliberate refusals. It does **not** use `spinnerVerbs`: that slot says what
 Claude is doing — "Accomplishing", "Baking" — so a sponsor there dresses an
@@ -180,10 +181,11 @@ an impression/click, changes billing eligibility or earns publisher money.
 
 Hooks add no placement of any kind. Two opt-in placements above do render — the
 sponsored spinner tip and the Claude status line — and neither is billable. Both
-draw an already approved creative, report nothing, and cannot observe their own
-visibility; Claude Code renders the tip rotation itself and hides the status line
-behind prompts and menus, so in both cases running the command proves nothing
-about what a user saw. Any paid spinner, status-line or loading placement needs
+draw approved creative, report nothing, and cannot observe their own visibility.
+The spinner setup may request an eligible decision, but a decision alone is not
+an impression. Claude Code renders the tip rotation itself and hides the status
+line behind prompts and menus, so in both cases running the command proves
+nothing about what a user saw. Any paid spinner, status-line or loading placement needs
 its own server contract and visibility qualification before it can be billed,
 which is why both stay unbilled and why impressions remain with the sidecar,
 which can observe its own pane.

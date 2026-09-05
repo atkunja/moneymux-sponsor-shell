@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.4
+npm install --global @moneymux/sponsor-shell@0.1.5
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
@@ -32,6 +32,13 @@ You can wrap a specific tool or command too:
 sponsor-shell codex
 sponsor-shell claude
 sponsor-shell bash
+```
+
+Claude Code can also show a disclosed, non-billable campaign in its native
+loading-tip rotation. Print the settings fragment with:
+
+```sh
+sponsor-shell claude-spinner-setup
 ```
 
 ## Supported platforms

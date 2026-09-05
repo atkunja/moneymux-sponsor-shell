@@ -335,7 +335,8 @@ fn run() -> Result<i32> {
         .first()
         .is_some_and(|arg| arg == "claude-spinner-setup")
     {
-        print!("{}", claude_spinner_setup(load_ad_creative().as_ref()));
+        let creative = load_claude_spinner_creative();
+        print!("{}", claude_spinner_setup(creative.as_ref()));
         return Ok(0);
     }
     if args
@@ -989,8 +990,8 @@ fn claude_status_line_setup(executable: &str) -> String {
 /// measured, and that the creative is fixed at install time.
 fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
     let Some(tip) = creative.and_then(claude_spinner_tip) else {
-        return "No approved creative is available locally, so there is no sponsored tip to \
-                install yet.\nRun the sidecar once to fetch one, then re-run this command.\n"
+        return "No approved creative is available for this terminal, so there is no sponsored \
+                tip to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
     };
     let settings = serde_json::json!({
@@ -1111,6 +1112,23 @@ fn load_ad_creative() -> Option<AdCreative> {
     let raw = fs::read_to_string(ad_file_path()).ok()?;
     let local: LocalAdCreative = serde_json::from_str(&raw).ok()?;
     Some(local.into_ad_creative())
+}
+
+fn load_claude_spinner_creative() -> Option<AdCreative> {
+    // A decision is not an impression. This fetch selects current eligible
+    // inventory, but the print-only setup path never reports visibility or a
+    // click because Claude owns the tip rotation and exposes neither signal.
+    select_claude_spinner_creative(
+        load_remote_ad_creative(Layout::current(), None, None, 0),
+        load_ad_creative(),
+    )
+}
+
+fn select_claude_spinner_creative(
+    remote: Option<AdCreative>,
+    local: Option<AdCreative>,
+) -> Option<AdCreative> {
+    remote.or(local)
 }
 
 fn load_active_ad_creative(
@@ -3870,6 +3888,77 @@ mod tests {
         let setup = claude_spinner_setup(None);
         assert!(setup.contains("No approved creative"), "{setup}");
         assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
+        assert!(!setup.contains("Run the sidecar"), "{setup}");
+    }
+
+    #[test]
+    fn spinner_setup_prefers_current_remote_inventory() {
+        let mut remote = railway_example_creative();
+        remote.id = "remote-current".into();
+        let mut local = railway_example_creative();
+        local.id = "local-draft".into();
+
+        let selected = select_claude_spinner_creative(Some(remote), Some(local)).unwrap();
+        assert_eq!(selected.id, "remote-current");
+    }
+
+    #[test]
+    fn spinner_setup_falls_back_to_an_injected_local_creative() {
+        let mut local = railway_example_creative();
+        local.id = "local-approved".into();
+
+        let selected = select_claude_spinner_creative(None, Some(local)).unwrap();
+        assert_eq!(selected.id, "local-approved");
+    }
+
+    #[test]
+    fn spinner_setup_does_not_invent_inventory() {
+        assert!(select_claude_spinner_creative(None, None).is_none());
+    }
+
+    #[test]
+    fn spinner_setup_fetches_current_linked_inventory() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(
+                listener,
+                "200 OK",
+                r#"{"adDecisionId":"decision-spinner","decisionToken":"signed.token","creative":{"enabled":true,"sponsor":"Current campaign","url":"https://campaign.example"}}"#,
+            )
+        });
+
+        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
+        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
+        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
+        env::set_var(SPONSOR_API_BASE_ENV, &base_url);
+        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
+        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
+
+        let creative = load_claude_spinner_creative().unwrap();
+        let request = server.join().unwrap();
+
+        match previous_api {
+            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
+            None => env::remove_var(SPONSOR_API_BASE_ENV),
+        }
+        match previous_device {
+            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
+        }
+        match previous_token {
+            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
+        }
+
+        assert_eq!(creative.sponsor, "Current campaign");
+        assert!(request.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(request
+            .to_ascii_lowercase()
+            .contains("\r\nauthorization: bearer ssdev_spinner_token\r\n"));
+        assert!(request.contains(r#""placement":"prompt_boundary""#));
+        assert!(!request.contains("/api/events/"));
     }
 
     // The verb slot says what Claude is doing. Putting a sponsor there dresses

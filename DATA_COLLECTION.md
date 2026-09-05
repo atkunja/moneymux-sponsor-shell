@@ -111,6 +111,12 @@ arguments are not sent. When the session ends, the client posts to
 - the MoneyMux session ID, when one was created;
 - seconds since the last qualified ad, when available.
 
+`sponsor-shell claude-spinner-setup` uses this same decision endpoint to select
+current eligible creative for a linked terminal. It sends no terminal-session
+ID or prior-ad timing for that one-off selection. It does not call the
+impression or click endpoints, because Claude exposes no visibility signal for
+its own tip rotation.
+
 ### Qualified impression
 
 `POST /api/events/impression` sends:

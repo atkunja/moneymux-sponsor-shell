@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.4
+npm install --global @moneymux/sponsor-shell@0.1.5
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
@@ -51,6 +51,16 @@ sponsor-shell codex
 sponsor-shell claude
 sponsor-shell bash
 ```
+
+For Claude Code's disclosed, non-billable loading-tip placement, print the
+settings fragment for the currently eligible campaign:
+
+```sh
+sponsor-shell claude-spinner-setup
+```
+
+The command selects approved inventory but never reports a paid impression or
+click; Claude Code does not expose whether its own tip was visible.
 
 The current source also offers opt-in protected harness sessions:
 
