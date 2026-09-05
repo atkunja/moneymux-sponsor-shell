@@ -2437,19 +2437,37 @@ fn link_candidates(_line: &str, creative: &AdCreative) -> Vec<String> {
     candidates
 }
 
+/// Character column of a byte offset within `line`.
+///
+/// Mouse events arrive as terminal columns, and the renderer lays out and clips
+/// by character (`clip_ascii`, `inside_line`). Searching by byte and comparing
+/// the result to a column shifted every clickable span right by one for each
+/// multi-byte character earlier in the line. Advertiser copy is stripped only of
+/// control and bidi characters, so one accent or em dash was enough: the first
+/// character of a link stopped responding, and the cell past its end started
+/// opening it.
+///
+/// This counts characters, matching the renderer. A full-width character still
+/// occupies two terminal cells, but the renderer already assumes one character
+/// per column throughout, so correcting that belongs with the layout, not here.
+fn char_column(line: &str, byte_offset: usize) -> usize {
+    line[..byte_offset].chars().count()
+}
+
 fn link_at_column(line: &str, creative: &AdCreative, col: usize) -> Option<String> {
     for candidate in link_candidates(line, creative) {
+        let candidate_columns = candidate.chars().count();
         let mut search_start = 0;
         while search_start < line.len() {
             let Some(position) = line[search_start..].find(&candidate) else {
                 break;
             };
             let start = search_start + position;
-            let end = start + candidate.len();
-            if (start..end).contains(&col) {
+            let start_column = char_column(line, start);
+            if (start_column..start_column + candidate_columns).contains(&col) {
                 return Some(candidate);
             }
-            search_start = end;
+            search_start = start + candidate.len();
         }
     }
 
@@ -2503,8 +2521,12 @@ fn linkified_line(line: &str, creative: &AdCreative, hovered_col: Option<usize>)
         };
 
         output.push_str(&line[offset..position]);
-        let end = position + candidate.len();
-        let is_hovered = hovered_col.is_some_and(|col| (position..end).contains(&col));
+        // Same character-versus-byte correction as the hit test: the underline
+        // must land on the cells the click does.
+        let start_column = char_column(line, position);
+        let candidate_columns = candidate.chars().count();
+        let is_hovered = hovered_col
+            .is_some_and(|col| (start_column..start_column + candidate_columns).contains(&col));
         output.push_str(&terminal_hyperlink(
             candidate,
             &link_url(candidate),
@@ -3551,6 +3573,69 @@ mod tests {
         );
         // Print-only: it must never claim to have written anything.
         assert!(!output.to_lowercase().contains("installed to"), "{output}");
+    }
+
+    // Advertiser copy is only stripped of control and bidi characters, so an
+    // accent or an em dash reaches the renderer. Lines are laid out by
+    // character, but the hit test searched by byte offset.
+    #[test]
+    fn a_link_is_clickable_at_its_displayed_column() {
+        let creative = AdCreative {
+            url: "https://example.test/offer".into(),
+            ..inactive_creative()
+        };
+        let line = "é https://example.test/offer";
+        // Display columns: 0 is the accent, 1 the space, so the link starts at 2.
+        let start_col = line.chars().position(|c| c == 'h').unwrap();
+        assert_eq!(start_col, 2);
+        assert_eq!(
+            link_at_column(line, &creative, start_col).as_deref(),
+            Some("https://example.test/offer")
+        );
+    }
+
+    #[test]
+    fn a_link_span_ends_where_it_is_displayed() {
+        let creative = AdCreative {
+            url: "https://example.test/offer".into(),
+            ..inactive_creative()
+        };
+        let line = "é https://example.test/offer";
+        let start = 2;
+        let end = start + "https://example.test/offer".chars().count();
+        assert!(link_at_column(line, &creative, end - 1).is_some());
+        // One past the end must not open anything; the byte version did.
+        assert!(link_at_column(line, &creative, end).is_none());
+        // Nor may the accent or the space before it.
+        assert!(link_at_column(line, &creative, 0).is_none());
+        assert!(link_at_column(line, &creative, 1).is_none());
+    }
+
+    #[test]
+    fn several_multibyte_characters_shift_the_span_no_further() {
+        let creative = AdCreative {
+            url: "https://example.test/x".into(),
+            ..inactive_creative()
+        };
+        let line = "café — https://example.test/x";
+        let start = line.chars().position(|c| c == 'h').unwrap();
+        assert!(link_at_column(line, &creative, start).is_some());
+        assert!(link_at_column(line, &creative, start - 1).is_none());
+    }
+
+    // The underline must mark the cells the click actually opens.
+    #[test]
+    fn the_hover_underline_covers_the_clickable_columns() {
+        let creative = AdCreative {
+            url: "https://example.test/offer".into(),
+            ..inactive_creative()
+        };
+        let line = "é https://example.test/offer";
+        let hovered = linkified_line(line, &creative, Some(2));
+        assert!(hovered.contains("\x1b[4m"), "{hovered}");
+        // The accent is outside the link, so hovering it underlines nothing.
+        let elsewhere = linkified_line(line, &creative, Some(0));
+        assert!(!elsewhere.contains("\x1b[4m"), "{elsewhere}");
     }
 
     #[test]
