@@ -86,6 +86,20 @@ fn valid_hint(hint: &Hint, now: u64) -> bool {
         && now.checked_sub(hint.sent_at_ms).is_some_and(|age| age < HINT_LEASE_MS)
 }
 
+/// Print-only configuration: never overwrite existing hooks or bypass their trust review.
+pub fn hook_configuration(harness: Harness, executable: &str) -> serde_json::Value {
+    let command = crate::shell_join([
+        executable.to_string(), "harness-event".to_string(), harness.command().to_string(),
+    ]);
+    let mut hooks = serde_json::Map::new();
+    for event in events(harness) {
+        hooks.insert(event.to_string(), serde_json::json!([{
+            "hooks": [{"type": "command", "command": command, "timeout": 1}]
+        }]));
+    }
+    serde_json::json!({"hooks": hooks})
+}
+
 /// Only the wrapper owns this directory. No global hook log or session registry.
 pub struct BridgeDirectory {
     path: PathBuf,
