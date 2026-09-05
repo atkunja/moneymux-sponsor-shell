@@ -168,9 +168,17 @@ do not shorten reported line counts to make an existing decision qualify.
 The existing creative pane still displays disclosed sponsor art and declared
 links. Its existing signed decision, interactivity, duration and click rules
 remain the only client-side ad-event inputs. A hook never requests an ad, reports
-an impression/click, changes billing eligibility or earns publisher money. This
-does not add a status-line or native-loading placement. Such a placement needs
-its own server contract and visibility qualification before it can be billed.
+an impression/click, changes billing eligibility or earns publisher money.
+
+Hooks add no placement of any kind. Two opt-in placements above do render — the
+sponsored spinner tip and the Claude status line — and neither is billable. Both
+draw an already approved creative, report nothing, and cannot observe their own
+visibility; Claude Code renders the tip rotation itself and hides the status line
+behind prompts and menus, so in both cases running the command proves nothing
+about what a user saw. Any paid spinner, status-line or loading placement needs
+its own server contract and visibility qualification before it can be billed,
+which is why both stay unbilled and why impressions remain with the sidecar,
+which can observe its own pane.
 
 ## Evidence and limitations
 
@@ -178,10 +186,19 @@ The implementation follows the official
 [Codex hooks contract](https://learn.chatgpt.com/docs/hooks) and
 [Claude Code hooks contract](https://code.claude.com/docs/en/hooks), checked on
 2026-09-04. The docs describe lifecycle callbacks, not permission to replace a
-vendor's native loading UI. Claude's separate
-[status-line interface](https://code.claude.com/docs/en/statusline) and Codex's
-[App Server](https://learn.chatgpt.com/docs/app-server) are possible future
-integration surfaces, not features implemented here.
+vendor's native loading UI.
+
+Claude's separate
+[status-line interface](https://code.claude.com/docs/en/statusline) is the one
+vendor-documented surface for a persistent sponsored row, and the opt-in
+`claude-status-line` placement uses it. Codex has no counterpart. Its
+[App Server](https://learn.chatgpt.com/docs/app-server) contract, checked on
+2026-09-05, exposes thread and turn management with `item/started` and
+`item/completed` streaming notifications, but no persistent line any external
+command may render. A symmetric `codex-status-line` is therefore not
+implementable against the documented surface. Reaching one would mean patching
+the vendor bundle, which this project does not do, so a Codex placement stays
+blocked on an upstream surface rather than on work here.
 
 Offline acceptance with synthetic harness executables checks actual tmux PTYs,
 argument forwarding, local hook rendering, stale-hint expiry, permission-prompt
