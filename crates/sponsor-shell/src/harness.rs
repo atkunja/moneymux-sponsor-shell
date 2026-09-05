@@ -301,6 +301,25 @@ pub fn events(harness: Harness) -> Vec<&'static str> {
     names
 }
 
+/// Map an event to the phase it establishes, or `None` to leave the phase alone.
+///
+/// Returning `None` matters: `PreToolUse`/`PostToolUse` prove a turn is still
+/// alive without themselves deciding the phase, so they must refresh the lease
+/// without overwriting an `AwaitingUser` the permission prompt just set.
+fn event_phase(name: &str) -> Option<TurnPhase> {
+    Some(match name {
+        "UserPromptSubmit" => TurnPhase::Working,
+        "PermissionRequest" | "Notification" => TurnPhase::AwaitingUser,
+        // A tool starting or finishing is the model acting, so it ends any
+        // wait it was blocked on and resumes work.
+        "PostToolUse" | "PostToolUseFailure" => TurnPhase::Working,
+        "Stop" | "Interrupt" | "SessionEnd" | "SessionStart" => TurnPhase::Idle,
+        // PreToolUse is deliberately absent: it fires while a permission prompt
+        // may still be pending, and would otherwise erase AwaitingUser.
+        _ => return None,
+    })
+}
+
 fn event_label(name: &str) -> Option<&'static str> {
     Some(match name {
         "SessionStart" => "session started",
