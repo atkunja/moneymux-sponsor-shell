@@ -2438,6 +2438,13 @@ fn add_activity_footer(lines: &mut [String], cols: u16, label: &str) {
     }
 }
 
+// The existing billing contract describes the full creative, not a short preview.
+fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
+    let inner_width = usize::from(layout.cols).saturating_sub(2);
+    layout.cols > 2 && layout.rows >= ad_height(creative, layout.cols)
+        && ad_body_lines(creative, inner_width).iter().all(|line| line.chars().count() <= inner_width)
+}
+
 // The ad is a box that hugs its art: the variant is picked by the horizontal
 // space available (large art when it fits, small otherwise) and the box is
 // exactly as tall as the art — never padded with empty rows.
