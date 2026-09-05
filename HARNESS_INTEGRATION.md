@@ -1,7 +1,7 @@
 # Claude Code and Codex terminal integration
 
 This is an opt-in **sidecar**, not a replacement for either vendor's spinner or
-official app UI. It keeps the harness pane selected and never automatically
+official app UI. It starts with the harness pane selected and never automatically
 zooms the ad over it, even during long idle periods, permission prompts, missing
 hooks, or `SPONSOR_SHELL_AD_WHILE_WORKING=1`. The initial split gives the harness
 75% of the window; automatic ad fitting uses at most one quarter (with a minimum

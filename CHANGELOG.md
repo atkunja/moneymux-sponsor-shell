@@ -4,6 +4,16 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+### Added
+
+- Explicit protected Claude Code/Codex terminal wrappers with no automatic ad
+  takeover and a quarter-height automatic sponsor-pane cap.
+- Print-only hook configuration and silent local-only lifecycle adapters, using
+  per-wrapper private sockets and ten-second advisory labels. No hook data or
+  new billing evidence is sent to MoneyMux.
+- Offline subprocess and tmux/PTY acceptance for hook privacy, permission-prompt
+  visibility, stale hints, quoting, resize behavior and wrapped exit status.
+
 ### Fixed
 
 - Preserve the wrapped program's exit status under zsh, whose `status` variable

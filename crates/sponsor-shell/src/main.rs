@@ -46,9 +46,8 @@ const SPONSOR_IDLE_FULLSCREEN_SECONDS_ENV: &str = "SPONSOR_SHELL_IDLE_FULLSCREEN
 const SPONSOR_INTERACTIVE_ENV: &str = "SPONSOR_SHELL_INTERACTIVE";
 // Opt-in: also expand the ad while the wrapped harness is "working" (loading /
 // streaming) — i.e. its pane is producing output while the user is not typing.
-// This is the harness-agnostic way to show an ad during a tool's loading state
-// (Claude Code / Codex / any TUI) without touching the harness itself. Default
-// off so no existing behavior changes.
+// This heuristic cannot distinguish loading from streamed text or permission
+// dialogs. Explicit protected harness mode never uses it. Default off.
 const SPONSOR_AD_WHILE_WORKING_ENV: &str = "SPONSOR_SHELL_AD_WHILE_WORKING";
 // While the harness is working, expand the ad once the user has been idle this
 // long and the app pane produced output within this recent window.
@@ -1889,7 +1888,8 @@ impl SponsorTmux {
 
     // Shrink the sponsor pane to exactly the ad's height so the app below gets
     // every remaining row — no dead space under the ad. Capped at half the
-    // window so an oversized creative can't squeeze the app out.
+    // window (one quarter in protected harness mode) so an oversized creative
+    // can't squeeze the app out.
     fn fit_sponsor_pane(&self, ad_rows: u16) -> Result<()> {
         let height = self.window_height();
         let protected = env::var(harness::HARNESS_ENV)
@@ -2016,8 +2016,8 @@ fn ad_while_working_enabled() -> bool {
 ///   away).
 /// - `ad_while_working` trigger (opt-in): the wrapped harness is producing output
 ///   (app pane active within the recent window) while the user is not typing —
-///   i.e. a "loading"/streaming state. This is the harness-agnostic realization
-///   of "show an ad while the tool is loading".
+///   i.e. an activity heuristic, not evidence of loading or safe-to-obscure UI.
+///   The caller disables both triggers throughout explicit harness mode.
 fn should_expand_ad(
     client_idle: Option<Duration>,
     app_pane_idle: Option<Duration>,
@@ -2943,30 +2943,30 @@ mod tests {
     }
 
     #[test]
-    fn ad_while_working_expands_during_a_loading_state_only() {
+    fn legacy_activity_heuristic_cannot_distinguish_loading_from_streaming() {
         let delay = Duration::from_secs(30);
-        // Harness working (app pane active 1s ago) + user waiting (idle 3s) → expand.
+        // Any recent output plus idle input triggers this legacy heuristic.
         assert!(should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(1)),
             delay,
             true,
         ));
-        // User actively typing (idle 0s) → not a loading state, do not expand.
+        // User actively typing (idle 0s) → do not expand.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(0)),
             Some(Duration::from_secs(1)),
             delay,
             true,
         ));
-        // Harness not producing output (app pane idle 10s) → not loading.
+        // No recent output → activity heuristic does not trigger.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(10)),
             delay,
             true,
         ));
-        // Same loading signals but the opt-in mode is OFF → do not expand.
+        // Same activity signals but the opt-in mode is OFF → do not expand.
         assert!(!should_expand_ad(
             Some(Duration::from_secs(3)),
             Some(Duration::from_secs(1)),
