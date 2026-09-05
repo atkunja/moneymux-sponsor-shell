@@ -28,7 +28,13 @@ const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
 const DEFAULT_APP_PANE_PERCENT: &str = "75";
 const IDLE_FULLSCREEN_DELAY: Duration = Duration::from_secs(30);
-const MIN_RENDERED_VISIBLE_DURATION: Duration = Duration::from_secs(1);
+/// How long a creative must stay on screen before it is worth reporting.
+///
+/// Matches the server's viewable-impression floor. One second was indefensibly
+/// short: an ad that flashes for a second while someone reads their own output
+/// is not a view an advertiser would pay for. Reporting below the floor only
+/// produces requests the server refuses.
+const MIN_RENDERED_VISIBLE_DURATION: Duration = Duration::from_secs(5);
 const SPONSOR_SESSION_ENV: &str = "SPONSOR_SHELL_TMUX_SESSION";
 const SPONSOR_APP_PERCENT_ENV: &str = "SPONSOR_SHELL_APP_PANE_PERCENT";
 const SPONSOR_AD_FILE_ENV: &str = "SPONSOR_SHELL_AD_FILE";
@@ -3364,7 +3370,7 @@ mod tests {
             &mut pending,
             Layout::new(80, 24),
             &mut sequence,
-            1_000,
+            5_000,
         ));
         let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
         assert!(body.get("decisionToken").is_none());
@@ -3389,7 +3395,7 @@ mod tests {
             &mut pending,
             Layout::new(80, 24),
             &mut sequence,
-            1_000,
+            5_000,
         ));
     }
 
@@ -3454,7 +3460,7 @@ mod tests {
             &mut pending,
             Layout::new(80, 24),
             &mut sequence,
-            1_000,
+            5_000,
         ));
         assert_eq!(pending.len(), 2);
         assert!(pending.iter().any(|r| r.path == IMPRESSION_EVENT_PATH));
@@ -3485,7 +3491,7 @@ mod tests {
             &mut pending,
             Layout::new(80, 24),
             &mut sequence,
-            1_000,
+            5_000,
         ));
     }
 
