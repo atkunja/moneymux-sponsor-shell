@@ -40,6 +40,12 @@ fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
 }
 
 const HINT_LEASE_MS: u64 = 10_000;
+/// How long a phase may be trusted without any new event.
+///
+/// A turn can legitimately run for minutes with no hook in between, so this is
+/// far longer than the label lease. It still expires: a harness that was killed
+/// mid-turn must decay to `Unknown` rather than claim work forever.
+const TURN_LEASE_MS: u64 = 15 * 60 * 1_000;
 
 /// What the harness is doing, derived from the hook events already arriving.
 ///
@@ -84,6 +90,9 @@ pub struct Activity {
     harness: Harness,
     socket: Option<UnixDatagram>,
     latest: Option<Hint>,
+    /// Held separately from `latest` so a long turn is not forgotten the moment
+    /// its opening event stops being recent enough to name.
+    phase: Option<(TurnPhase, u64)>,
 }
 
 impl Activity {
@@ -95,6 +104,7 @@ impl Activity {
             harness,
             socket,
             latest: None,
+            phase: None,
         })
     }
 
@@ -108,6 +118,7 @@ impl Activity {
         let Some(socket) = &self.socket else { return };
         let Some(now) = now_ms() else {
             self.latest = None;
+            self.phase = None;
             return;
         };
         // Bound every frame's work even if a local process floods the socket.
