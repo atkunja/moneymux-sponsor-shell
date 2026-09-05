@@ -990,8 +990,8 @@ fn claude_status_line_setup(executable: &str) -> String {
 /// measured, and that the creative is fixed at install time.
 fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
     let Some(tip) = creative.and_then(claude_spinner_tip) else {
-        return "No approved creative is available locally, so there is no sponsored tip to \
-                install yet.\nRun the sidecar once to fetch one, then re-run this command.\n"
+        return "No approved creative is available for this terminal, so there is no sponsored \
+                tip to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
     };
     let settings = serde_json::json!({
