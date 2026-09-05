@@ -4,6 +4,36 @@ use serde::{Deserialize, Serialize};
 pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
 pub const SOCKET_ENV: &str = "SPONSOR_SHELL_HOOK_SOCKET";
 
+const COMMON_EVENTS: &[&str] = &[
+    "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
+    "PostToolUse", "Stop", "SessionEnd",
+];
+
+pub fn events(harness: Harness) -> Vec<&'static str> {
+    let mut names = COMMON_EVENTS.to_vec();
+    match harness {
+        Harness::Claude => names.extend(["Notification", "PostToolUseFailure"]),
+        Harness::Codex => names.push("Interrupt"),
+    }
+    names
+}
+
+fn event_label(name: &str) -> Option<&'static str> {
+    Some(match name {
+        "SessionStart" => "session started",
+        "UserPromptSubmit" => "prompt submitted",
+        "PreToolUse" => "tool requested",
+        "PermissionRequest" => "permission requested",
+        "PostToolUse" => "tool finished",
+        "PostToolUseFailure" => "tool failed",
+        "Notification" => "notification",
+        "Stop" => "turn stopped",
+        "Interrupt" => "turn interrupted",
+        "SessionEnd" => "session ended",
+        _ => return None,
+    })
+}
+
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum Harness {
