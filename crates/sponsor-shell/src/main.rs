@@ -3296,6 +3296,65 @@ mod tests {
     }
 
     #[test]
+    fn the_status_line_is_one_disclosed_row_with_a_clickable_sponsor() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        assert!(line.starts_with("Sponsored: "), "{line}");
+        assert!(!line.contains('\n'), "must stay one row: {line}");
+        // Forced https, so a creative cannot smuggle another scheme into the
+        // link the user is invited to click.
+        assert!(line.contains("https://railway.app"), "{line}");
+        assert!(line.contains("Railway"), "{line}");
+    }
+
+    // Nothing is better than a placeholder occupying the user's screen forever.
+    #[test]
+    fn no_inventory_prints_nothing() {
+        assert!(claude_status_line(&inactive_creative()).is_none());
+        let unnamed = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "   ".into(),
+            ..inactive_creative()
+        };
+        assert!(claude_status_line(&unnamed).is_none());
+    }
+
+    #[test]
+    fn a_long_sponsor_name_cannot_overrun_a_narrow_terminal() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "S".repeat(500),
+            url: "example.test".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        // Exactly the bound, not merely "shorter": the disclosure word supplies
+        // its own S, so counting letters would have measured the wrong thing.
+        assert!(line.contains(&"S".repeat(40)), "{line}");
+        assert!(!line.contains(&"S".repeat(41)), "{line}");
+    }
+
+    // The row is written straight into the user's terminal, so a creative must
+    // not be able to move the cursor, clear the screen or forge a link.
+    #[test]
+    fn a_hostile_creative_cannot_inject_escape_sequences() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Evil\u{1b}[2Jname\nsecond row".into(),
+            url: "example.test".into(),
+            ..inactive_creative()
+        };
+        let line = claude_status_line(&creative).unwrap();
+        assert!(!line.contains("\u{1b}[2J"), "{line:?}");
+        assert!(!line.contains('\n'), "{line:?}");
+    }
+
+    #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
         assert_eq!(impression_retry_delay(1), Duration::from_secs(2));
