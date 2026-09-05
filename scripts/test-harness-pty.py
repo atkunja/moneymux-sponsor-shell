@@ -19,6 +19,13 @@ import termios
 import time
 
 
+def claim_controlling_terminal():
+    # Linux tmux attach requires /dev/tty, not merely an isatty() stdin fd.
+    # Run only in the single-threaded fixture's freshly forked child.
+    os.setsid()
+    fcntl.ioctl(0, termios.TIOCSCTTY, 0)
+
+
 def check(binary, provider, interrupt=False):
     # /tmp keeps Unix socket paths below macOS's length limit.
     with tempfile.TemporaryDirectory(prefix="mmh-test-", dir="/tmp") as temporary:
@@ -74,7 +81,8 @@ exit 37
             tmux("set-environment", "-g", "SPONSOR_SHELL_HARNESS", "wrong")
             tmux("set-environment", "-g", "SPONSOR_SHELL_HOOK_SOCKET", "/missing/stale")
             child = subprocess.Popen([str(binary), "harness", provider, "--", "a b", "literal;$(no-exec)'"],
-                                     env=env, cwd=root, stdin=slave, stdout=slave, stderr=slave)
+                                     env=env, cwd=root, stdin=slave, stdout=slave, stderr=slave,
+                                     preexec_fn=claim_controlling_terminal)
             os.close(slave)
             slave = None
             session = f"sponsor-shell-{child.pid}"
@@ -106,7 +114,7 @@ exit 37
             assert tmux("display-message", "-p", "-t", session, "#{window_zoomed_flag}") == "0"
             assert tmux("display-message", "-p", "-t", f"{session}:0.1", "#{pane_active}") == "1"
             fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 18, 48, 0, 0))
-            # Popen's test PTY has no foreground process group to receive SIGWINCH.
+            # Explicitly notify the attached client on both supported platforms.
             client_pid = int(tmux("list-clients", "-t", session, "-F", "#{client_pid}"))
             os.kill(client_pid, signal.SIGWINCH)
             wait_for(lambda: tmux("display-message", "-p", "-t", session, "#{window_width}") == "48")
