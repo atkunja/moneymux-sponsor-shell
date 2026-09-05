@@ -20,6 +20,8 @@ use crossterm::{execute, queue};
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
+mod harness;
+
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
 const DEFAULT_APP_PANE_PERCENT: &str = "75";
@@ -288,6 +290,24 @@ fn main() {
 
 fn run() -> Result<i32> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "harness-event") {
+        // This entry point never prints diagnostics or emits model/permission output.
+        if args.len() == 2 {
+            if let Some(harness) = harness::Harness::parse(&args[1]) {
+                harness::emit(harness);
+            }
+        }
+        return Ok(0);
+    }
+    if args.first().is_some_and(|arg| arg == "harness-hooks") {
+        let harness = args.get(1).and_then(|value| harness::Harness::parse(value))
+            .filter(|_| args.len() == 2)
+            .context("usage: sponsor-shell harness-hooks <claude|codex> (prints JSON only)")?;
+        let executable = env::current_exe().context("failed to locate sponsor-shell")?;
+        let executable = executable.to_str().context("hook executable path must be UTF-8")?;
+        println!("{}", serde_json::to_string_pretty(&harness::hook_configuration(harness, executable))?);
+        return Ok(0);
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--help" || arg == "-h" || arg == "help")
@@ -341,7 +361,7 @@ fn run() -> Result<i32> {
         args[1..].to_vec()
     };
 
-    run_tmux_shell(&command, &command_args)
+    run_tmux_shell(&command, &command_args, None)
 }
 
 fn print_help() {
@@ -1591,7 +1611,7 @@ fn run_sponsor_pane() -> Result<()> {
     }
 }
 
-fn run_tmux_shell(command: &str, command_args: &[String]) -> Result<i32> {
+fn run_tmux_shell(command: &str, command_args: &[String], harness: Option<harness::Harness>) -> Result<i32> {
     ensure_tmux_available()?;
 
     let session = format!("sponsor-shell-{}", std::process::id());
