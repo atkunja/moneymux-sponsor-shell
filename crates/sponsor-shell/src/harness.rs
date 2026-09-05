@@ -149,12 +149,6 @@ impl Activity {
         }
     }
 
-    /// The current phase, for callers deciding placement rather than rendering
-    /// the footer string.
-    pub fn phase(&self) -> TurnPhase {
-        self.phase_at(now_ms().unwrap_or(0))
-    }
-
     fn phase_at(&self, now: u64) -> TurnPhase {
         self.phase
             .filter(|(_, at)| now.checked_sub(*at).is_some_and(|age| age < TURN_LEASE_MS))
@@ -594,17 +588,17 @@ mod tests {
         assert_eq!(unique.len(), labels.len());
     }
 
-    // The wall-clock accessor is what placement callers use; assert it agrees
-    // with the injected-time form the rest of these tests exercise.
+    // Against a real clock rather than only injected constants, so a unit
+    // mismatch in the lease would show up here.
     #[test]
-    fn the_wall_clock_accessor_matches_the_injected_time_form() {
+    fn the_phase_holds_and_expires_against_a_real_clock() {
         let now = now_ms().unwrap();
-        let working = phased(&[("UserPromptSubmit", now)]);
-        assert_eq!(working.phase(), TurnPhase::Working);
-        assert_eq!(working.phase(), working.phase_at(now));
-
+        assert_eq!(
+            phased(&[("UserPromptSubmit", now)]).phase_at(now),
+            TurnPhase::Working
+        );
         let expired = phased(&[("UserPromptSubmit", now - TURN_LEASE_MS)]);
-        assert_eq!(expired.phase(), TurnPhase::Unknown);
+        assert_eq!(expired.phase_at(now), TurnPhase::Unknown);
     }
 
     #[test]
