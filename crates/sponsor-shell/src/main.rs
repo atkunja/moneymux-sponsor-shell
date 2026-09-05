@@ -3954,6 +3954,7 @@ mod tests {
 
         assert_eq!(creative.sponsor, "Current campaign");
         assert!(request.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(request.contains(r#""placement":"prompt_boundary""#));
         assert!(!request.contains("/api/events/"));
     }
 
