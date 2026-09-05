@@ -149,6 +149,8 @@ impl Activity {
         }
     }
 
+    /// The current phase, for callers deciding placement rather than rendering
+    /// the footer string.
     pub fn phase(&self) -> TurnPhase {
         self.phase_at(now_ms().unwrap_or(0))
     }
@@ -541,14 +543,20 @@ mod tests {
     #[test]
     fn a_long_turn_outlives_the_recent_hook_label() {
         let activity = phased(&[("UserPromptSubmit", 1_000)]);
-        assert_eq!(activity.phase_at(1_000 + HINT_LEASE_MS * 10), TurnPhase::Working);
+        assert_eq!(
+            activity.phase_at(1_000 + HINT_LEASE_MS * 10),
+            TurnPhase::Working
+        );
     }
 
     // But a harness killed mid-turn must decay rather than claim work forever.
     #[test]
     fn a_stalled_turn_expires_into_unknown_at_the_boundary() {
         let activity = phased(&[("UserPromptSubmit", 1_000)]);
-        assert_eq!(activity.phase_at(1_000 + TURN_LEASE_MS - 1), TurnPhase::Working);
+        assert_eq!(
+            activity.phase_at(1_000 + TURN_LEASE_MS - 1),
+            TurnPhase::Working
+        );
         assert_eq!(activity.phase_at(1_000 + TURN_LEASE_MS), TurnPhase::Unknown);
     }
 
@@ -584,6 +592,19 @@ mod tests {
         unique.sort_unstable();
         unique.dedup();
         assert_eq!(unique.len(), labels.len());
+    }
+
+    // The wall-clock accessor is what placement callers use; assert it agrees
+    // with the injected-time form the rest of these tests exercise.
+    #[test]
+    fn the_wall_clock_accessor_matches_the_injected_time_form() {
+        let now = now_ms().unwrap();
+        let working = phased(&[("UserPromptSubmit", now)]);
+        assert_eq!(working.phase(), TurnPhase::Working);
+        assert_eq!(working.phase(), working.phase_at(now));
+
+        let expired = phased(&[("UserPromptSubmit", now - TURN_LEASE_MS)]);
+        assert_eq!(expired.phase(), TurnPhase::Unknown);
     }
 
     #[test]
