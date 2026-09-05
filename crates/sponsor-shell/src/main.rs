@@ -1725,8 +1725,8 @@ fn run_tmux_shell(
     run_tmux([
         "split-window",
         "-v",
-        "-p",
-        &app_percent,
+        "-l",
+        &format!("{app_percent}%"),
         "-t",
         &session,
         "-c",
