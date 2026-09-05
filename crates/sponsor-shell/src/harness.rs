@@ -302,6 +302,57 @@ impl Harness {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn private_channels_are_unique_and_cleanup_only_owned_files() {
+        let first = BridgeDirectory::create().unwrap();
+        let second = BridgeDirectory::create().unwrap();
+        assert_ne!(first.path, second.path);
+        assert_eq!(
+            fs::metadata(&first.path).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
+        let socket = Activity::bind(&first.socket_path()).unwrap();
+        let path = first.path.clone();
+        drop(socket);
+        drop(first);
+        assert!(!path.exists());
+        let foreign = second.path.join("not-ours");
+        fs::write(&foreign, "preserve").unwrap();
+        let path = second.path.clone();
+        drop(second);
+        assert_eq!(fs::read_to_string(&foreign).unwrap(), "preserve");
+        fs::remove_file(foreign).unwrap();
+        fs::remove_dir(path).unwrap();
+    }
+
+    #[test]
+    fn independent_socket_channels_do_not_cross_sessions() {
+        let first = BridgeDirectory::create().unwrap();
+        let second = BridgeDirectory::create().unwrap();
+        let mut activity = Activity {
+            harness: Harness::Codex,
+            socket: Some(Activity::bind(&first.socket_path()).unwrap()),
+            latest: None,
+        };
+        let mut other = Activity {
+            harness: Harness::Codex,
+            socket: Some(Activity::bind(&second.socket_path()).unwrap()),
+            latest: None,
+        };
+        let hint = read_hint(
+            Harness::Codex,
+            br#"{"hook_event_name":"Interrupt"}"#.as_slice(),
+        )
+        .unwrap();
+        send_hint(&first.socket_path(), &hint).unwrap();
+        activity.poll();
+        other.poll();
+        assert_eq!(activity.label(), "Codex | recent hook: turn interrupted");
+        assert_eq!(other.label(), "Codex | activity unavailable");
+        assert!(send_hint(&first.path.join("absent"), &hint).is_err());
+    }
 
     #[test]
     fn only_explicit_supported_harness_names_are_accepted() {
