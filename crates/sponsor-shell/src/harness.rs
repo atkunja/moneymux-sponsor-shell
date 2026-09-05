@@ -1,6 +1,47 @@
 //! Optional, local-only harness activity. These hints are never visibility or billing evidence.
 use serde::{Deserialize, Serialize};
 use std::io::Read;
+use std::fs;
+use std::os::unix::fs::DirBuilderExt;
+use std::path::{Path, PathBuf};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+/// Only the wrapper owns this directory. No global hook log or session registry.
+pub struct BridgeDirectory {
+    path: PathBuf,
+}
+
+impl BridgeDirectory {
+    pub fn create() -> std::io::Result<Self> {
+        Self::create_under(&std::env::temp_dir())
+    }
+
+    fn create_under(parent: &Path) -> std::io::Result<Self> {
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)
+            .map_err(std::io::Error::other)?.as_nanos();
+        for attempt in 0..32 {
+            let path = parent.join(format!("mmh-{}-{nonce:x}-{attempt:x}", std::process::id()));
+            match fs::DirBuilder::new().mode(0o700).create(&path) {
+                Ok(()) => return Ok(Self { path }),
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => return Err(error),
+            }
+        }
+        Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "hook directory collision"))
+    }
+
+    pub fn socket_path(&self) -> PathBuf {
+        self.path.join("events")
+    }
+}
+
+impl Drop for BridgeDirectory {
+    fn drop(&mut self) {
+        // Remove only our known socket and the empty directory, never recursively.
+        let _ = fs::remove_file(self.socket_path());
+        let _ = fs::remove_dir(&self.path);
+    }
+}
 
 const MAX_INPUT_BYTES: u64 = 64 * 1024;
 
