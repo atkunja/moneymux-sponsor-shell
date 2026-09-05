@@ -42,7 +42,7 @@ fn full_creative_keeps_original_signed_geometry_and_minimum_duration() {
         &mut pending,
         layout,
         &mut sequence,
-        999
+        4_999
     ));
     assert!(enqueue_impression_if_needed(
         &creative,
@@ -51,12 +51,12 @@ fn full_creative_keeps_original_signed_geometry_and_minimum_duration() {
         &mut pending,
         layout,
         &mut sequence,
-        1_000
+        5_000
     ));
     let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
     assert_eq!(body["lineCount"], ad_height(&creative, 80));
     assert_eq!(body["decisionToken"], "fixture-token");
-    assert_eq!(body["visibleDurationMs"], 1_000);
+    assert_eq!(body["visibleDurationMs"], 5_000);
     assert_eq!(sequence, 2);
 }
 
