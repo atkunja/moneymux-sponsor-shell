@@ -59,6 +59,9 @@ settings fragment for the currently eligible campaign:
 sponsor-shell claude-spinner-setup
 ```
 
+The command selects approved inventory but never reports a paid impression or
+click; Claude Code does not expose whether its own tip was visible.
+
 The current source also offers opt-in protected harness sessions:
 
 ```sh
