@@ -30,6 +30,62 @@ fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
     Ok(())
 }
 
+const HINT_LEASE_MS: u64 = 10_000;
+
+pub struct Activity {
+    harness: Harness,
+    socket: Option<UnixDatagram>,
+    latest: Option<Hint>,
+}
+
+impl Activity {
+    pub fn from_env() -> Option<Self> {
+        let harness = Harness::parse(&std::env::var(HARNESS_ENV).ok()?)?;
+        let socket = std::env::var_os(SOCKET_ENV).and_then(|path| Self::bind(Path::new(&path)).ok());
+        Some(Self { harness, socket, latest: None })
+    }
+
+    fn bind(path: &Path) -> std::io::Result<UnixDatagram> {
+        let socket = UnixDatagram::bind(path)?;
+        socket.set_nonblocking(true)?;
+        Ok(socket)
+    }
+
+    pub fn poll(&mut self) {
+        let Some(socket) = &self.socket else { return };
+        let Some(now) = now_ms() else { self.latest = None; return };
+        // Bound every frame's work even if a local process floods the socket.
+        for _ in 0..64 {
+            let mut bytes = [0_u8; 256];
+            let Ok(size) = socket.recv(&mut bytes) else { break };
+            let Ok(hint) = serde_json::from_slice::<Hint>(&bytes[..size]) else { continue };
+            if hint.harness == self.harness && valid_hint(&hint, now)
+                && self.latest.as_ref().is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
+            {
+                self.latest = Some(hint);
+            }
+        }
+    }
+
+    pub fn label(&self) -> String {
+        self.label_at(now_ms().unwrap_or(0))
+    }
+
+    fn label_at(&self, now: u64) -> String {
+        let recent = self.latest.as_ref().filter(|hint| valid_hint(hint, now))
+            .and_then(|hint| event_label(&hint.event));
+        match recent {
+            Some(label) => format!("{} | recent hook: {label}", self.harness.label()),
+            None => format!("{} | activity unavailable", self.harness.label()),
+        }
+    }
+}
+
+fn valid_hint(hint: &Hint, now: u64) -> bool {
+    events(hint.harness).contains(&hint.event.as_str())
+        && now.checked_sub(hint.sent_at_ms).is_some_and(|age| age < HINT_LEASE_MS)
+}
+
 /// Only the wrapper owns this directory. No global hook log or session registry.
 pub struct BridgeDirectory {
     path: PathBuf,
