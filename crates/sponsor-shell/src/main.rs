@@ -100,8 +100,14 @@ struct AdCreative {
     stats: Vec<String>,
 }
 
-struct PendingImpressionReport {
-    ad_decision_id: String,
+/// A billable event waiting to reach the API.
+///
+/// `key` is whatever the server deduplicates on for this event: the ad decision
+/// id for an impression, the client event id for a click. Retrying is only safe
+/// because the server is idempotent on that key.
+struct PendingEventReport {
+    key: String,
+    path: &'static str,
     body: String,
     in_flight: bool,
     next_attempt_at: Instant,
@@ -110,6 +116,8 @@ struct PendingImpressionReport {
 }
 
 const IMPRESSION_REPORT_RETRY_WINDOW: Duration = Duration::from_secs(4 * 60);
+const IMPRESSION_EVENT_PATH: &str = "/api/events/impression";
+const CLICK_EVENT_PATH: &str = "/api/events/click";
 
 #[derive(Deserialize)]
 struct LocalAdCreative {
@@ -1069,7 +1077,7 @@ fn enqueue_impression_if_needed(
     creative: &AdCreative,
     reported_ad_decision_ids: &HashSet<String>,
     exhausted_ad_decision_ids: &HashSet<String>,
-    pending_reports: &mut Vec<PendingImpressionReport>,
+    pending_reports: &mut Vec<PendingEventReport>,
     layout: Layout,
     next_render_sequence: &mut u64,
     visible_duration_ms: u128,
@@ -1084,9 +1092,11 @@ fn enqueue_impression_if_needed(
     };
     if reported_ad_decision_ids.contains(ad_decision_id)
         || exhausted_ad_decision_ids.contains(ad_decision_id)
-        || pending_reports
-            .iter()
-            .any(|report| report.ad_decision_id == *ad_decision_id)
+        || pending_reports.iter().any(|report| {
+            // Match the path too: a queued click for this decision must never
+            // suppress its impression, which is a separate billable event.
+            report.path == IMPRESSION_EVENT_PATH && report.key == *ad_decision_id
+        })
     {
         return false;
     }
@@ -1104,8 +1114,9 @@ fn enqueue_impression_if_needed(
     if let Some(token) = creative.decision_token.as_deref() {
         body["decisionToken"] = serde_json::json!(token);
     }
-    pending_reports.push(PendingImpressionReport {
-        ad_decision_id: ad_decision_id.clone(),
+    pending_reports.push(PendingEventReport {
+        key: ad_decision_id.clone(),
+        path: IMPRESSION_EVENT_PATH,
         body: body.to_string(),
         in_flight: false,
         next_attempt_at: Instant::now(),
@@ -1116,20 +1127,17 @@ fn enqueue_impression_if_needed(
 }
 
 fn pump_impression_reports(
-    pending_reports: &mut Vec<PendingImpressionReport>,
+    pending_reports: &mut Vec<PendingEventReport>,
     reported_ad_decision_ids: &mut HashSet<String>,
     exhausted_ad_decision_ids: &mut HashSet<String>,
     result_rx: &Receiver<(String, bool)>,
     result_tx: &Sender<(String, bool)>,
 ) {
-    while let Ok((ad_decision_id, success)) = result_rx.try_recv() {
+    while let Ok((key, success)) = result_rx.try_recv() {
         if success {
-            reported_ad_decision_ids.insert(ad_decision_id.clone());
-            pending_reports.retain(|report| report.ad_decision_id != ad_decision_id);
-        } else if let Some(report) = pending_reports
-            .iter_mut()
-            .find(|report| report.ad_decision_id == ad_decision_id)
-        {
+            reported_ad_decision_ids.insert(key.clone());
+            pending_reports.retain(|report| report.key != key);
+        } else if let Some(report) = pending_reports.iter_mut().find(|report| report.key == key) {
             report.in_flight = false;
             report.attempts = report.attempts.saturating_add(1);
             report.next_attempt_at = Instant::now() + impression_retry_delay(report.attempts);
@@ -1140,7 +1148,7 @@ fn pump_impression_reports(
         .iter()
         .filter(|report| report.created_at.elapsed() >= IMPRESSION_REPORT_RETRY_WINDOW)
     {
-        exhausted_ad_decision_ids.insert(report.ad_decision_id.clone());
+        exhausted_ad_decision_ids.insert(report.key.clone());
     }
     pending_reports.retain(|report| report.created_at.elapsed() < IMPRESSION_REPORT_RETRY_WINDOW);
 
@@ -1150,12 +1158,13 @@ fn pump_impression_reports(
         .filter(|report| !report.in_flight && report.next_attempt_at <= now)
     {
         report.in_flight = true;
-        let ad_decision_id = report.ad_decision_id.clone();
+        let key = report.key.clone();
+        let path = report.path;
         let body = report.body.clone();
         let result_tx = result_tx.clone();
         thread::spawn(move || {
-            let success = api_post(&api_url("/api/events/impression"), body).is_ok();
-            let _ = result_tx.send((ad_decision_id, success));
+            let success = api_post(&api_url(path), body).is_ok();
+            let _ = result_tx.send((key, success));
         });
     }
 }
@@ -1164,19 +1173,43 @@ fn impression_retry_delay(attempts: u32) -> Duration {
     Duration::from_secs(2_u64.saturating_pow(attempts.min(5)).min(30))
 }
 
-fn report_click(creative: &AdCreative, url: &str) {
+/// Queue a click for delivery with the same retry the impression path gets.
+///
+/// This was fire-and-forget: one attempt, result discarded. A click is worth
+/// twenty-five times an impression at the reserve price and more under a bid,
+/// so a momentary network failure silently cost the publisher the most valuable
+/// event on the page while the cheaper impression beside it was retried for
+/// four minutes.
+///
+/// Retrying is safe because the server already deduplicates on `clientEventId`
+/// under an advisory lock, and separately refuses to make a second click on the
+/// same decision payable. The key was always sent; nothing ever resent it.
+fn queue_click_report(
+    pending_reports: &mut Vec<PendingEventReport>,
+    creative: &AdCreative,
+    url: &str,
+) {
     let Some(ad_decision_id) = &creative.ad_decision_id else {
         return;
     };
+    let client_event_id = next_click_event_id(ad_decision_id);
     let mut body = serde_json::json!({
         "adDecisionId": ad_decision_id,
-        "clientEventId": next_click_event_id(ad_decision_id),
+        "clientEventId": client_event_id,
         "url": url,
     });
     if let Some(token) = creative.decision_token.as_deref() {
         body["decisionToken"] = serde_json::json!(token);
     }
-    report_api_event("/api/events/click", body.to_string());
+    pending_reports.push(PendingEventReport {
+        key: client_event_id,
+        path: CLICK_EVENT_PATH,
+        body: body.to_string(),
+        in_flight: false,
+        next_attempt_at: Instant::now(),
+        created_at: Instant::now(),
+        attempts: 0,
+    });
 }
 
 fn next_click_event_id(ad_decision_id: &str) -> String {
@@ -1192,13 +1225,6 @@ fn next_click_event_id(ad_decision_id: &str) -> String {
         sequence,
         ad_decision_id
     )
-}
-
-fn report_api_event(path: &str, body: String) {
-    let url = api_url(path);
-    thread::spawn(move || {
-        let _ = api_post(&url, body);
-    });
 }
 
 struct RemoteTerminalSessionGuard {
@@ -1419,7 +1445,7 @@ fn run_sponsor_pane() -> Result<()> {
     let mut last_remote_check = Instant::now();
     let mut reported_ad_decision_ids = HashSet::new();
     let mut exhausted_ad_decision_ids = HashSet::new();
-    let mut pending_impression_reports = Vec::new();
+    let mut pending_event_reports = Vec::new();
     let (impression_result_tx, impression_result_rx) = mpsc::channel();
     let mut hovered_ad_cell = None;
     let mut hovered_link = None;
@@ -1482,7 +1508,7 @@ fn run_sponsor_pane() -> Result<()> {
                         let url = link_url(&link);
                         open_url(&url).ok();
                         if full_creative_fits(&creative, layout) {
-                            report_click(&creative, &url);
+                            queue_click_report(&mut pending_event_reports, &creative, &url);
                         }
                         render_fullscreen_ad(
                             &mut stdout,
@@ -1593,7 +1619,7 @@ fn run_sponsor_pane() -> Result<()> {
         if last_ad_check.elapsed() >= Duration::from_secs(1) {
             let layout = Layout::current();
             pump_impression_reports(
-                &mut pending_impression_reports,
+                &mut pending_event_reports,
                 &mut reported_ad_decision_ids,
                 &mut exhausted_ad_decision_ids,
                 &impression_result_rx,
@@ -1605,7 +1631,7 @@ fn run_sponsor_pane() -> Result<()> {
                     &creative,
                     &reported_ad_decision_ids,
                     &exhausted_ad_decision_ids,
-                    &mut pending_impression_reports,
+                    &mut pending_event_reports,
                     layout,
                     &mut next_render_sequence,
                     creative_visible_since.elapsed().as_millis().min(86_400_000),
@@ -3238,6 +3264,102 @@ mod tests {
         assert!(!enqueue_impression_if_needed(
             &creative,
             &reported,
+            &exhausted,
+            &mut pending,
+            Layout::new(80, 24),
+            &mut sequence,
+            1_000,
+        ));
+    }
+
+    // A click is worth twenty-five times an impression at the reserve price. It
+    // used to be sent once with the result discarded, so a momentary failure
+    // dropped the most valuable event on the page in silence.
+    #[test]
+    fn a_click_is_queued_for_retry_like_an_impression() {
+        let mut pending = Vec::new();
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/offer");
+
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].path, CLICK_EVENT_PATH);
+        let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
+        assert_eq!(body["adDecisionId"], "decision-1");
+        // The retry is only safe because the server deduplicates on this key,
+        // so it must be both present and the key the queue retries under.
+        assert_eq!(body["clientEventId"], pending[0].key.as_str());
+    }
+
+    #[test]
+    fn a_click_without_a_decision_is_not_queued() {
+        let mut pending = Vec::new();
+        queue_click_report(&mut pending, &inactive_creative(), "https://example.test/");
+        assert!(pending.is_empty());
+    }
+
+    // Two clicks on the same ad are two separate billable events, so they must
+    // not deduplicate against each other in the queue.
+    #[test]
+    fn two_clicks_on_one_decision_keep_distinct_keys() {
+        let mut pending = Vec::new();
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/a");
+        queue_click_report(&mut pending, &creative, "https://example.test/b");
+        assert_eq!(pending.len(), 2);
+        assert_ne!(pending[0].key, pending[1].key);
+    }
+
+    // A queued click must never stand in for the impression on the same
+    // decision; they are separate charges.
+    #[test]
+    fn a_queued_click_does_not_suppress_its_impression() {
+        let mut pending = Vec::new();
+        let mut sequence = 0;
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/");
+        assert!(enqueue_impression_if_needed(
+            &creative,
+            &HashSet::new(),
+            &HashSet::new(),
+            &mut pending,
+            Layout::new(80, 24),
+            &mut sequence,
+            1_000,
+        ));
+        assert_eq!(pending.len(), 2);
+        assert!(pending.iter().any(|r| r.path == IMPRESSION_EVENT_PATH));
+    }
+
+    // Clicks now share the queue, and the completed/exhausted sets, with
+    // impressions. Those sets are consulted by ad decision id, so a click key
+    // that equalled one would make an exhausted click silently block that
+    // decision's impression. The prefix is what prevents it.
+    #[test]
+    fn a_click_key_can_never_equal_an_ad_decision_id() {
+        let key = next_click_event_id("decision-1");
+        assert!(key.starts_with("click-"), "{key}");
+        assert_ne!(key, "decision-1");
+
+        let mut exhausted = HashSet::new();
+        exhausted.insert(key);
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        let mut pending = Vec::new();
+        let mut sequence = 0;
+        assert!(enqueue_impression_if_needed(
+            &creative,
+            &HashSet::new(),
             &exhausted,
             &mut pending,
             Layout::new(80, 24),
