@@ -86,16 +86,21 @@ exit 37
             os.close(slave)
             slave = None
             session = f"sponsor-shell-{child.pid}"
+            terminal_tail = bytearray()
+
+            def drain_terminal(timeout=0):
+                if select.select([master], [], [], timeout)[0]:
+                    try:
+                        terminal_tail.extend(os.read(master, 65536))
+                        del terminal_tail[:-4096]
+                    except OSError:
+                        pass
 
             def wait_for(condition, timeout=8):
                 deadline = time.monotonic() + timeout
                 while time.monotonic() < deadline:
-                    if select.select([master], [], [], 0)[0]:
-                        try:
-                            os.read(master, 65536)
-                        except OSError:
-                            pass
-                    assert child.poll() is None, f"wrapper exited early: {child.returncode}"
+                    drain_terminal()
+                    assert child.poll() is None, f"wrapper exited early: {child.returncode}; fixture output: {bytes(terminal_tail)!r}"
                     if condition():
                         return
                     time.sleep(0.05)
@@ -128,13 +133,9 @@ exit 37
                 tmux("send-keys", "-t", f"{session}:0.1", "q", "Enter")
             deadline = time.monotonic() + 5
             while child.poll() is None and time.monotonic() < deadline:
-                if select.select([master], [], [], 0.05)[0]:
-                    try:
-                        os.read(master, 65536)
-                    except OSError:
-                        pass
+                drain_terminal(0.05)
             expected_exit = 130 if interrupt else 37
-            assert child.poll() == expected_exit, f"unexpected exit: {child.poll()}, app: {capture(1)}"
+            assert child.poll() == expected_exit, f"unexpected exit: {child.poll()}, app: {capture(1)!r}, ad: {capture(0)!r}, panes: {tmux('list-panes', '-t', session, '-F', '#{pane_index}:#{pane_active}:#{pane_current_command}', required=False)!r}"
             assert not list(root.glob("mmh-*")), "wrapper did not clean its local channel"
             print(json.dumps({"provider": provider, "pty": "passed", "exit": expected_exit,
                               "hook_privacy": "passed", "stale_hint_no_takeover": "passed"}))
