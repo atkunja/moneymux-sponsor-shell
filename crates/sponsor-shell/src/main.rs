@@ -21,6 +21,8 @@ use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
 mod harness;
+#[cfg(test)]
+mod compact_tests;
 
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
