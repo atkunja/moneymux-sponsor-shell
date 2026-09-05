@@ -969,6 +969,45 @@ fn claude_status_line_setup(executable: &str) -> String {
     )
 }
 
+/// One sponsored spinner tip for Claude Code, or nothing.
+///
+/// `spinnerTipsOverride` puts an entry in the rotation Claude Code shows while a
+/// turn runs — the waiting state itself, which is the placement this product
+/// exists to sell. Claude Code renders it as `<label>: <text>`, so with a
+/// `Sponsored` label the disclosure is part of the line rather than an
+/// afterthought.
+///
+/// Deliberately a tip and not a `spinnerVerbs` entry. The verb slot says what
+/// Claude is doing — "Accomplishing", "Baking" — so putting a sponsor there
+/// dresses an advertisement up as the model's own status. A competitor does
+/// exactly that. It reads as native because it is pretending to be native, and
+/// this product discloses instead.
+///
+/// Not billable and not trackable. Claude Code renders the rotation itself and
+/// tells nobody, so there is no impression, no click and no visibility signal
+/// here at all — unlike the sidecar, which can observe its own pane.
+fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
+    if creative.id == "local-disabled" {
+        return None;
+    }
+    let sponsor = sanitize_terminal_text(&creative.sponsor);
+    let sponsor = sponsor.trim();
+    if sponsor.is_empty() {
+        return None;
+    }
+    let url = canonical_https_url(&creative.url);
+    // Claude Code caps tip text at 500 characters and collapses whitespace
+    // itself. Bound both parts well inside that so the sponsor and its
+    // destination always survive together rather than the URL being cut off.
+    let sponsor = truncate_chars(sponsor, 60);
+    let url = truncate_chars(&url, 200);
+    Some(serde_json::json!({
+        // Stable so Claude Code keeps this tip's show history across edits.
+        "id": "moneymux-sponsor",
+        "text": format!("{sponsor} — {url}"),
+    }))
+}
+
 /// One sponsored status-line row for Claude Code, or nothing.
 ///
 /// Claude Code renders whatever this prints beneath its own footer, so the
