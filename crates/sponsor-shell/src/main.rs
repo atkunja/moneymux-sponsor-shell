@@ -1151,6 +1151,37 @@ fn api_post(url: &str, body: String) -> Result<String> {
     api_post_with_token(url, &body, token.as_deref())
 }
 
+/// What became of one attempt to deliver a billable event.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ReportOutcome {
+    /// The server accepted it.
+    Delivered,
+    /// Worth another attempt: a timeout, a dropped connection, a 5xx, or a 4xx
+    /// that means "later".
+    Retryable,
+    /// The server refused this payload, so resending it cannot change the
+    /// answer. Distinct from `Delivered` because nothing was billed.
+    Refused,
+}
+
+/// Whether a failed report could ever succeed if sent again.
+///
+/// The queue treated every failure as transient and retried for four minutes
+/// with backoff. A rejected report never becomes acceptable: the server refuses
+/// an impression whose telemetry is invalid or below the viewable floor, and no
+/// amount of resending changes the payload. That is up to eight pointless
+/// requests per event, and it delays marking the event exhausted.
+///
+/// Only the server saying "not this payload" is permanent. A timeout, a
+/// connection failure, a 5xx, and the two 4xx codes that mean "later" — 408 and
+/// 429 — are all worth another attempt.
+fn is_permanent_rejection(error: &anyhow::Error) -> bool {
+    let Some(ureq::Error::StatusCode(status)) = error.downcast_ref::<ureq::Error>() else {
+        return false;
+    };
+    (400..500).contains(status) && *status != 408 && *status != 429
+}
+
 fn api_post_with_token(url: &str, body: &str, token: Option<&str>) -> Result<String> {
     validate_api_base_url(url).context("refusing unsafe Sponsor Shell API request")?;
     let agent = API_AGENT.get_or_init(|| {
@@ -1229,12 +1260,18 @@ fn pump_impression_reports(
     pending_reports: &mut Vec<PendingEventReport>,
     reported_ad_decision_ids: &mut HashSet<String>,
     exhausted_ad_decision_ids: &mut HashSet<String>,
-    result_rx: &Receiver<(String, bool)>,
-    result_tx: &Sender<(String, bool)>,
+    result_rx: &Receiver<(String, ReportOutcome)>,
+    result_tx: &Sender<(String, ReportOutcome)>,
 ) {
-    while let Ok((key, success)) = result_rx.try_recv() {
-        if success {
+    while let Ok((key, outcome)) = result_rx.try_recv() {
+        if outcome == ReportOutcome::Delivered {
             reported_ad_decision_ids.insert(key.clone());
+            pending_reports.retain(|report| report.key != key);
+        } else if outcome == ReportOutcome::Refused {
+            // Refused is not delivered: nothing was billed. Recording it as
+            // exhausted stops the retry loop without claiming the event
+            // reached the ledger.
+            exhausted_ad_decision_ids.insert(key.clone());
             pending_reports.retain(|report| report.key != key);
         } else if let Some(report) = pending_reports.iter_mut().find(|report| report.key == key) {
             report.in_flight = false;
@@ -1262,8 +1299,12 @@ fn pump_impression_reports(
         let body = report.body.clone();
         let result_tx = result_tx.clone();
         thread::spawn(move || {
-            let success = api_post(&api_url(path), body).is_ok();
-            let _ = result_tx.send((key, success));
+            let outcome = match api_post(&api_url(path), body) {
+                Ok(_) => ReportOutcome::Delivered,
+                Err(error) if is_permanent_rejection(&error) => ReportOutcome::Refused,
+                Err(_) => ReportOutcome::Retryable,
+            };
+            let _ = result_tx.send((key, outcome));
         });
     }
 }
