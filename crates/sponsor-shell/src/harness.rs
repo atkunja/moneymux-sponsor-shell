@@ -452,6 +452,70 @@ mod tests {
         assert!(send_hint(&first.path.join("absent"), &hint).is_err());
     }
 
+    fn phased(events: &[(&str, u64)]) -> Activity {
+        let mut activity = Activity {
+            harness: Harness::Claude,
+            socket: None,
+            latest: None,
+            phase: None,
+        };
+        for (event, at) in events {
+            if let Some(phase) = event_phase(event) {
+                activity.phase = Some((phase, *at));
+            } else if let Some((current, _)) = activity.phase {
+                activity.phase = Some((current, *at));
+            }
+        }
+        activity
+    }
+
+    #[test]
+    fn a_submitted_prompt_starts_a_working_turn() {
+        assert_eq!(
+            phased(&[("UserPromptSubmit", 1_000)]).phase_at(1_000),
+            TurnPhase::Working
+        );
+    }
+
+    #[test]
+    fn stopping_interrupting_or_ending_returns_to_idle() {
+        for ending in ["Stop", "Interrupt", "SessionEnd"] {
+            let activity = phased(&[("UserPromptSubmit", 1_000), (ending, 2_000)]);
+            assert_eq!(activity.phase_at(2_000), TurnPhase::Idle, "{ending}");
+        }
+    }
+
+    // The model is not computing while a human is being asked something, and
+    // the user can see that on their own screen.
+    #[test]
+    fn a_permission_prompt_is_not_reported_as_working() {
+        let activity = phased(&[("UserPromptSubmit", 1_000), ("PermissionRequest", 2_000)]);
+        assert_eq!(activity.phase_at(2_000), TurnPhase::AwaitingUser);
+    }
+
+    // PreToolUse fires while the permission prompt may still be pending, so it
+    // must not silently revert the wait to working.
+    #[test]
+    fn a_tool_request_does_not_erase_a_pending_permission_prompt() {
+        let activity = phased(&[
+            ("UserPromptSubmit", 1_000),
+            ("PermissionRequest", 2_000),
+            ("PreToolUse", 3_000),
+        ]);
+        assert_eq!(activity.phase_at(3_000), TurnPhase::AwaitingUser);
+    }
+
+    // ...but the tool actually running means the human answered.
+    #[test]
+    fn a_finished_tool_resumes_working_after_a_permission_prompt() {
+        let activity = phased(&[
+            ("UserPromptSubmit", 1_000),
+            ("PermissionRequest", 2_000),
+            ("PostToolUse", 3_000),
+        ]);
+        assert_eq!(activity.phase_at(3_000), TurnPhase::Working);
+    }
+
     #[test]
     fn hints_expire_at_the_boundary_and_reject_future_timestamps() {
         let hint = Hint {
