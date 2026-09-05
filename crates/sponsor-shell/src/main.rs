@@ -335,7 +335,8 @@ fn run() -> Result<i32> {
         .first()
         .is_some_and(|arg| arg == "claude-spinner-setup")
     {
-        print!("{}", claude_spinner_setup(load_ad_creative().as_ref()));
+        let creative = load_claude_spinner_creative();
+        print!("{}", claude_spinner_setup(creative.as_ref()));
         return Ok(0);
     }
     if args
@@ -1111,6 +1112,10 @@ fn load_ad_creative() -> Option<AdCreative> {
     let raw = fs::read_to_string(ad_file_path()).ok()?;
     let local: LocalAdCreative = serde_json::from_str(&raw).ok()?;
     Some(local.into_ad_creative())
+}
+
+fn load_claude_spinner_creative() -> Option<AdCreative> {
+    load_remote_ad_creative(Layout::current(), None, None, 0).or_else(load_ad_creative)
 }
 
 fn load_active_ad_creative(
