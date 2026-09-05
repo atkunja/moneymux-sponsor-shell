@@ -3901,6 +3901,15 @@ mod tests {
         assert_eq!(selected.id, "remote-current");
     }
 
+    #[test]
+    fn spinner_setup_falls_back_to_an_injected_local_creative() {
+        let mut local = railway_example_creative();
+        local.id = "local-approved".into();
+
+        let selected = select_claude_spinner_creative(None, Some(local)).unwrap();
+        assert_eq!(selected.id, "local-approved");
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
