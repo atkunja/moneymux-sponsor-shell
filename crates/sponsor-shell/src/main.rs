@@ -100,8 +100,14 @@ struct AdCreative {
     stats: Vec<String>,
 }
 
-struct PendingImpressionReport {
-    ad_decision_id: String,
+/// A billable event waiting to reach the API.
+///
+/// `key` is whatever the server deduplicates on for this event: the ad decision
+/// id for an impression, the client event id for a click. Retrying is only safe
+/// because the server is idempotent on that key.
+struct PendingEventReport {
+    key: String,
+    path: &'static str,
     body: String,
     in_flight: bool,
     next_attempt_at: Instant,
@@ -110,6 +116,8 @@ struct PendingImpressionReport {
 }
 
 const IMPRESSION_REPORT_RETRY_WINDOW: Duration = Duration::from_secs(4 * 60);
+const IMPRESSION_EVENT_PATH: &str = "/api/events/impression";
+const CLICK_EVENT_PATH: &str = "/api/events/click";
 
 #[derive(Deserialize)]
 struct LocalAdCreative {
@@ -1069,7 +1077,7 @@ fn enqueue_impression_if_needed(
     creative: &AdCreative,
     reported_ad_decision_ids: &HashSet<String>,
     exhausted_ad_decision_ids: &HashSet<String>,
-    pending_reports: &mut Vec<PendingImpressionReport>,
+    pending_reports: &mut Vec<PendingEventReport>,
     layout: Layout,
     next_render_sequence: &mut u64,
     visible_duration_ms: u128,
@@ -1084,9 +1092,11 @@ fn enqueue_impression_if_needed(
     };
     if reported_ad_decision_ids.contains(ad_decision_id)
         || exhausted_ad_decision_ids.contains(ad_decision_id)
-        || pending_reports
-            .iter()
-            .any(|report| report.ad_decision_id == *ad_decision_id)
+        || pending_reports.iter().any(|report| {
+            // Match the path too: a queued click for this decision must never
+            // suppress its impression, which is a separate billable event.
+            report.path == IMPRESSION_EVENT_PATH && report.key == *ad_decision_id
+        })
     {
         return false;
     }
@@ -1104,8 +1114,9 @@ fn enqueue_impression_if_needed(
     if let Some(token) = creative.decision_token.as_deref() {
         body["decisionToken"] = serde_json::json!(token);
     }
-    pending_reports.push(PendingImpressionReport {
-        ad_decision_id: ad_decision_id.clone(),
+    pending_reports.push(PendingEventReport {
+        key: ad_decision_id.clone(),
+        path: IMPRESSION_EVENT_PATH,
         body: body.to_string(),
         in_flight: false,
         next_attempt_at: Instant::now(),
@@ -1116,20 +1127,17 @@ fn enqueue_impression_if_needed(
 }
 
 fn pump_impression_reports(
-    pending_reports: &mut Vec<PendingImpressionReport>,
+    pending_reports: &mut Vec<PendingEventReport>,
     reported_ad_decision_ids: &mut HashSet<String>,
     exhausted_ad_decision_ids: &mut HashSet<String>,
     result_rx: &Receiver<(String, bool)>,
     result_tx: &Sender<(String, bool)>,
 ) {
-    while let Ok((ad_decision_id, success)) = result_rx.try_recv() {
+    while let Ok((key, success)) = result_rx.try_recv() {
         if success {
-            reported_ad_decision_ids.insert(ad_decision_id.clone());
-            pending_reports.retain(|report| report.ad_decision_id != ad_decision_id);
-        } else if let Some(report) = pending_reports
-            .iter_mut()
-            .find(|report| report.ad_decision_id == ad_decision_id)
-        {
+            reported_ad_decision_ids.insert(key.clone());
+            pending_reports.retain(|report| report.key != key);
+        } else if let Some(report) = pending_reports.iter_mut().find(|report| report.key == key) {
             report.in_flight = false;
             report.attempts = report.attempts.saturating_add(1);
             report.next_attempt_at = Instant::now() + impression_retry_delay(report.attempts);
@@ -1140,7 +1148,7 @@ fn pump_impression_reports(
         .iter()
         .filter(|report| report.created_at.elapsed() >= IMPRESSION_REPORT_RETRY_WINDOW)
     {
-        exhausted_ad_decision_ids.insert(report.ad_decision_id.clone());
+        exhausted_ad_decision_ids.insert(report.key.clone());
     }
     pending_reports.retain(|report| report.created_at.elapsed() < IMPRESSION_REPORT_RETRY_WINDOW);
 
@@ -1150,12 +1158,13 @@ fn pump_impression_reports(
         .filter(|report| !report.in_flight && report.next_attempt_at <= now)
     {
         report.in_flight = true;
-        let ad_decision_id = report.ad_decision_id.clone();
+        let key = report.key.clone();
+        let path = report.path;
         let body = report.body.clone();
         let result_tx = result_tx.clone();
         thread::spawn(move || {
-            let success = api_post(&api_url("/api/events/impression"), body).is_ok();
-            let _ = result_tx.send((ad_decision_id, success));
+            let success = api_post(&api_url(path), body).is_ok();
+            let _ = result_tx.send((key, success));
         });
     }
 }
