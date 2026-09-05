@@ -3727,6 +3727,89 @@ mod tests {
     }
 
     #[test]
+    fn the_spinner_tip_carries_the_sponsor_and_its_destination() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let tip = claude_spinner_tip(&creative).unwrap();
+        assert_eq!(tip["id"], "moneymux-sponsor");
+        let text = tip["text"].as_str().unwrap();
+        assert!(text.contains("Railway"), "{text}");
+        // Forced https so a creative cannot put another scheme in the spinner.
+        assert!(text.contains("https://railway.app"), "{text}");
+        // Claude Code caps tip text at 500 characters.
+        assert!(text.chars().count() <= 500, "{}", text.chars().count());
+    }
+
+    #[test]
+    fn a_long_creative_still_fits_a_spinner_tip() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "S".repeat(400),
+            url: format!("example.test/{}", "p".repeat(400)),
+            ..inactive_creative()
+        };
+        let tip = claude_spinner_tip(&creative).unwrap();
+        let text = tip["text"].as_str().unwrap();
+        assert!(text.chars().count() <= 500, "{}", text.chars().count());
+        // The destination must survive truncation, not be cut off entirely.
+        assert!(text.contains("https://example.test/"), "{text}");
+    }
+
+    #[test]
+    fn no_inventory_installs_no_spinner_tip() {
+        assert!(claude_spinner_tip(&inactive_creative()).is_none());
+        let setup = claude_spinner_setup(None);
+        assert!(setup.contains("No approved creative"), "{setup}");
+        assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
+    }
+
+    // The verb slot says what Claude is doing. Putting a sponsor there dresses
+    // an advertisement up as the model's own status, so the config must never
+    // touch it, and must not silence Claude Code's own tips either.
+    #[test]
+    fn spinner_setup_uses_the_tip_slot_and_keeps_the_built_in_tips() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let setup = claude_spinner_setup(Some(&creative));
+        assert!(setup.contains("\"spinnerTipsOverride\""), "{setup}");
+        assert!(!setup.contains("spinnerVerbs"), "{setup}");
+        // Quoted, so this checks the JSON key rather than the prose that
+        // explains why the key is absent.
+        assert!(!setup.contains("\"excludeDefault\""), "{setup}");
+        assert!(setup.contains("\"label\": \"Sponsored\""), "{setup}");
+    }
+
+    // Someone installing this has to know it pays nothing before they see the
+    // configuration, not after wondering why no earnings appear.
+    #[test]
+    fn spinner_setup_states_it_earns_nothing_before_the_configuration() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let setup = claude_spinner_setup(Some(&creative));
+        let cost = setup
+            .find("earns nothing")
+            .expect("must say it earns nothing");
+        let config = setup.find("spinnerTipsOverride").expect("config printed");
+        assert!(cost < config, "the limit has to come first");
+        assert!(
+            setup.contains("delete that `spinnerTipsOverride` key"),
+            "{setup}"
+        );
+    }
+
+    #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
         assert_eq!(impression_retry_delay(1), Duration::from_secs(2));
