@@ -2456,6 +2456,12 @@ fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
     if inner == 0 || creative.url.is_empty() || creative.url.chars().count() > inner || body.len() > capacity {
         body = vec!["Sponsor hidden: enlarge pane".to_string()];
         body.truncate(capacity);
+    } else if let Some(logo) = [&creative.logos.small, &creative.logos.large].into_iter()
+        .find(|logo| !logo.is_empty() && logo.len() + body.len() <= capacity && logo_width(logo) <= inner) {
+        // Include a whole supplied logo, never the top few rows of a larger one.
+        let mut branded = logo.clone();
+        branded.extend(body);
+        body = branded;
     }
     let mut lines = vec![border_line(width)];
     lines.extend(body.iter().map(|line| inside_line(width, line)));
