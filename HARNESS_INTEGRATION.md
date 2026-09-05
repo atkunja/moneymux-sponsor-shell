@@ -82,6 +82,21 @@ not an authenticated boundary against other processes running as the same user.
 
 ## Advertising and payment boundaries
 
+Short panes show a clearly labeled sponsored preview instead of the cropped top
+of the full poster. Sponsor identity, the exact destination and full disclosure
+must fit together; otherwise the slot says to enlarge the pane and exposes no
+ad link. A supplied logo is included only if the entire logo fits after those
+essentials. Recent-hook labels replace only the closing border.
+
+These compact previews allow navigation but send **no impression or click
+reports**. The existing signed server contract describes the full creative, not
+this shortened placement. Full-creative reports still use the original line
+count, token and minimum duration. Resizing or hiding a creative restarts its
+uninterrupted geometry interval, including when a resize event is missed.
+This is geometry checking, not proof that the terminal window is foregrounded.
+Paid compact/loading placements need a versioned server visibility contract;
+do not shorten reported line counts to make an existing decision qualify.
+
 The existing creative pane still displays disclosed sponsor art and declared
 links. Its existing signed decision, interactivity, duration and click rules
 remain the only client-side ad-event inputs. A hook never requests an ad, reports
