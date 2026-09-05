@@ -516,6 +516,56 @@ mod tests {
         assert_eq!(activity.phase_at(3_000), TurnPhase::Working);
     }
 
+    // A turn that outlives the ten-second label lease must still read as
+    // working; that gap is the whole reason the phase is tracked separately.
+    #[test]
+    fn a_long_turn_outlives_the_recent_hook_label() {
+        let activity = phased(&[("UserPromptSubmit", 1_000)]);
+        assert_eq!(activity.phase_at(1_000 + HINT_LEASE_MS * 10), TurnPhase::Working);
+    }
+
+    // But a harness killed mid-turn must decay rather than claim work forever.
+    #[test]
+    fn a_stalled_turn_expires_into_unknown_at_the_boundary() {
+        let activity = phased(&[("UserPromptSubmit", 1_000)]);
+        assert_eq!(activity.phase_at(1_000 + TURN_LEASE_MS - 1), TurnPhase::Working);
+        assert_eq!(activity.phase_at(1_000 + TURN_LEASE_MS), TurnPhase::Unknown);
+    }
+
+    #[test]
+    fn no_observed_event_is_unknown_rather_than_guessed_idle() {
+        let activity = phased(&[]);
+        assert_eq!(activity.phase_at(1_000), TurnPhase::Unknown);
+    }
+
+    // A clock that disagrees must not resurrect an expired phase.
+    #[test]
+    fn a_backwards_clock_does_not_extend_a_phase() {
+        let activity = phased(&[("UserPromptSubmit", 10_000)]);
+        assert_eq!(activity.phase_at(9_999), TurnPhase::Unknown);
+    }
+
+    #[test]
+    fn an_unrecognised_event_leaves_the_phase_alone() {
+        let activity = phased(&[("UserPromptSubmit", 1_000), ("SomethingElse", 2_000)]);
+        assert_eq!(activity.phase_at(2_000), TurnPhase::Working);
+        assert_eq!(event_phase("SomethingElse"), None);
+    }
+
+    #[test]
+    fn every_phase_has_a_distinct_human_label() {
+        let labels = [
+            TurnPhase::Unknown.label(),
+            TurnPhase::Idle.label(),
+            TurnPhase::Working.label(),
+            TurnPhase::AwaitingUser.label(),
+        ];
+        let mut unique = labels.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), labels.len());
+    }
+
     #[test]
     fn hints_expire_at_the_boundary_and_reject_future_timestamps() {
         let hint = Hint {
