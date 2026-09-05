@@ -20,6 +20,8 @@ use crossterm::{execute, queue};
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
+#[cfg(test)]
+mod compact_tests;
 mod harness;
 
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
@@ -1072,6 +1074,11 @@ fn enqueue_impression_if_needed(
     next_render_sequence: &mut u64,
     visible_duration_ms: u128,
 ) -> bool {
+    if !full_creative_fits(creative, layout)
+        || visible_duration_ms < MIN_RENDERED_VISIBLE_DURATION.as_millis()
+    {
+        return false;
+    }
     let Some(ad_decision_id) = &creative.ad_decision_id else {
         return false;
     };
@@ -1420,6 +1427,7 @@ fn run_sponsor_pane() -> Result<()> {
     let ad_while_working = ad_while_working_enabled();
     let mut idle_delay = idle_fullscreen_delay(&creative);
     let mut creative_visible_since = Instant::now();
+    let mut visible_geometry = None;
     let mut last_cols = Layout::current().cols;
     let tmux = SponsorTmux::from_env();
 
@@ -1436,6 +1444,10 @@ fn run_sponsor_pane() -> Result<()> {
     let mut pane_fitted = false;
 
     loop {
+        let current_layout = Layout::current();
+        if visibility_geometry_changed(&mut visible_geometry, &creative, current_layout) {
+            creative_visible_since = Instant::now();
+        }
         if let Some(activity) = &mut activity {
             activity.poll();
         }
@@ -1469,7 +1481,9 @@ fn run_sponsor_pane() -> Result<()> {
                     {
                         let url = link_url(&link);
                         open_url(&url).ok();
-                        report_click(&creative, &url);
+                        if full_creative_fits(&creative, layout) {
+                            report_click(&creative, &url);
+                        }
                         render_fullscreen_ad(
                             &mut stdout,
                             layout,
@@ -1489,6 +1503,10 @@ fn run_sponsor_pane() -> Result<()> {
                 }
                 event::Event::Resize(_, _) => {
                     let layout = Layout::current();
+                    // A new viewport starts a new uninterrupted visibility interval.
+                    creative_visible_since = Instant::now();
+                    hovered_ad_cell = None;
+                    hovered_link = None;
                     render_fullscreen_ad(
                         &mut stdout,
                         layout,
@@ -1555,6 +1573,7 @@ fn run_sponsor_pane() -> Result<()> {
                         && tmux.expand_sponsor_pane().is_ok()
                     {
                         fullscreen = true;
+                        creative_visible_since = Instant::now();
                         hovered_ad_cell = None;
                         hovered_link = None;
                         render_fullscreen_ad(
@@ -1581,6 +1600,7 @@ fn run_sponsor_pane() -> Result<()> {
                 &impression_result_tx,
             );
             if creative_visible_since.elapsed() >= MIN_RENDERED_VISIBLE_DURATION
+                && full_creative_fits(&creative, layout)
                 && enqueue_impression_if_needed(
                     &creative,
                     &reported_ad_decision_ids,
@@ -2438,6 +2458,68 @@ fn add_activity_footer(lines: &mut [String], cols: u16, label: &str) {
     }
 }
 
+// The existing billing contract describes the full creative, not a short preview.
+fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
+    let inner_width = usize::from(layout.cols).saturating_sub(2);
+    layout.cols > 2
+        && layout.rows >= ad_height(creative, layout.cols)
+        && ad_body_lines(creative, inner_width)
+            .iter()
+            .all(|line| line.chars().count() <= inner_width)
+}
+
+fn visibility_geometry_changed(
+    previous: &mut Option<(u16, u16)>,
+    creative: &AdCreative,
+    layout: Layout,
+) -> bool {
+    let next = full_creative_fits(creative, layout).then_some((layout.cols, layout.rows));
+    let restart = next.is_none() || next != *previous;
+    *previous = next;
+    restart
+}
+
+fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
+    let width = usize::from(cols);
+    let inner = width.saturating_sub(2);
+    let capacity = usize::from(rows).saturating_sub(2);
+    // Never crop a destination into a different-looking clickable address.
+    let mut body = wrap_text(
+        &format!("Sponsored preview: {}", creative.sponsor),
+        inner.max(1),
+        usize::MAX,
+    );
+    body.push(creative.url.clone());
+    body.extend(wrap_text(
+        &format!("[{}]", creative.disclosure),
+        inner.max(1),
+        usize::MAX,
+    ));
+    if inner == 0
+        || creative.url.is_empty()
+        || creative.url.chars().count() > inner
+        || body.len() > capacity
+    {
+        body = vec!["Sponsor hidden: enlarge pane".to_string()];
+        body.truncate(capacity);
+    } else if let Some(logo) = [&creative.logos.small, &creative.logos.large]
+        .into_iter()
+        .find(|logo| {
+            !logo.is_empty() && logo.len() + body.len() <= capacity && logo_width(logo) <= inner
+        })
+    {
+        // Include a whole supplied logo, never the top few rows of a larger one.
+        let mut branded = logo.clone();
+        branded.extend(body);
+        body = branded;
+    }
+    let mut lines = vec![border_line(width)];
+    lines.extend(body.iter().map(|line| inside_line(width, line)));
+    lines.push(border_line(width));
+    lines.truncate(usize::from(rows));
+    lines
+}
+
 // The ad is a box that hugs its art: the variant is picked by the horizontal
 // space available (large art when it fits, small otherwise) and the box is
 // exactly as tall as the art — never padded with empty rows.
@@ -2448,6 +2530,9 @@ fn ad_lines(creative: &AdCreative, cols: u16, rows: u16, _frame: u64) -> Vec<Str
     }
     if rows == 1 {
         return vec![border_line(width)];
+    }
+    if !full_creative_fits(creative, Layout::new(cols, rows)) {
+        return short_ad_lines(creative, cols, rows);
     }
 
     // Borders take 2 columns; the art is drawn one space in from the left.

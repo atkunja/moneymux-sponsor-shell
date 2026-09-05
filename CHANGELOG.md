@@ -16,6 +16,11 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ### Fixed
 
+- Short sponsor panes retain identity, destination and disclosure instead of
+  cropping them beneath ASCII art. Whole logos are included when they fit;
+  undersized slots hide the ad. Short previews never report paid clicks or
+  impressions, and resized/hidden geometry restarts the visibility interval.
+
 - Use percentage-valued `split-window -l` for tmux 3.4 compatibility instead of
   the broken/deprecated `-p` form. Use level-triggered terminal input polling so
   resize readiness cannot strand a pending Ctrl-C in the sponsor pane on Linux.

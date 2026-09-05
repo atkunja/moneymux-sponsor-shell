@@ -82,6 +82,21 @@ not an authenticated boundary against other processes running as the same user.
 
 ## Advertising and payment boundaries
 
+Short panes show a clearly labeled sponsored preview instead of the cropped top
+of the full poster. Sponsor identity, the exact destination and full disclosure
+must fit together; otherwise the slot says to enlarge the pane and exposes no
+ad link. A supplied logo is included only if the entire logo fits after those
+essentials. Recent-hook labels replace only the closing border.
+
+These compact previews allow navigation but send **no impression or click
+reports**. The existing signed server contract describes the full creative, not
+this shortened placement. Full-creative reports still use the original line
+count, token and minimum duration. Resizing or hiding a creative restarts its
+uninterrupted geometry interval, including when a resize event is missed.
+This is geometry checking, not proof that the terminal window is foregrounded.
+Paid compact/loading placements need a versioned server visibility contract;
+do not shorten reported line counts to make an existing decision qualify.
+
 The existing creative pane still displays disclosed sponsor art and declared
 links. Its existing signed decision, interactivity, duration and click rules
 remain the only client-side ad-event inputs. A hook never requests an ad, reports
@@ -148,3 +163,41 @@ wrapper percentage), supported by the
 [tmux manual](https://man.openbsd.org/OpenBSD-7.5/tmux.1). PTY acceptance uses a
 real controlling terminal and an isolated tmux server, with bounded synthetic
 output available if startup fails.
+
+### Provider and compact-layout acceptance — 2026-09-04
+
+An isolated macOS tmux session ran installed Claude Code 2.1.191 with built-in
+tools disabled and synthetic text only. A real response completed beside the
+sidecar. A second invocation loaded the binary's generated hook JSON through
+session-only `--settings`: actual `SessionStart` and `Stop` labels appeared,
+and the exact requested response was visible. At 80x24 the sidecar retained
+the destination and disclosure; at 48x18 it hid the undersized ad and retained
+the selected 13-row harness pane without zoom. No ad account was configured;
+the outer `CI=1` verdict kept billing interactivity disabled.
+
+Installed Codex CLI 0.144.1 also completed a real synthetic no-tools response
+under read-only/untrusted approval settings. Its six-row sidecar retained the
+preview, and resizing to 48x18 hid the ad without taking over the harness.
+The initial Codex run did not install or trust hooks, so it proves the no-hook
+fallback. A follow-up loaded a temporary project `hooks.json`, checked for exact
+equality with generated configuration, then reviewed its local command/source
+and trusted it through the normal `/hooks` UI. The installed version recognized
+six of the eight configured events; its actual `Stop` label appeared beside a
+second exact synthetic response. This establishes real Codex stop-hook delivery,
+not acceptance of unsupported or unobserved events. No hook-trust bypass flags
+were used. The observed rate-limit prompt was dismissed without changing models.
+The temporary project hook file was removed after the test.
+
+The first Claude run exposed the cropped-logo bug fixed here. It also presented
+an unexpected onboarding dialog; an Enter intended for the test selected global
+auto-permission mode. The operator stopped that session and explicitly set
+Claude's permission default to `default`, then used session-scoped `default`
+for the follow-up. No model tools were available in either Claude test.
+
+Local checks: 60 Rust unit tests, three compiled-CLI tests, all four synthetic
+PTY cases, three npm tests, release-metadata checking, formatting, strict Clippy,
+optimized build and dependency policy passed (existing duplicate `syn` warning).
+The PTY suite now asserts disclosed previews at normal size and no cropped
+destination after shrinking. Real permission/tool/streaming scenarios, complete
+vendor-event coverage, full waiting-state placement, paid compact-placement
+acceptance and a signed release remain unproven.
