@@ -1173,19 +1173,43 @@ fn impression_retry_delay(attempts: u32) -> Duration {
     Duration::from_secs(2_u64.saturating_pow(attempts.min(5)).min(30))
 }
 
-fn report_click(creative: &AdCreative, url: &str) {
+/// Queue a click for delivery with the same retry the impression path gets.
+///
+/// This was fire-and-forget: one attempt, result discarded. A click is worth
+/// twenty-five times an impression at the reserve price and more under a bid,
+/// so a momentary network failure silently cost the publisher the most valuable
+/// event on the page while the cheaper impression beside it was retried for
+/// four minutes.
+///
+/// Retrying is safe because the server already deduplicates on `clientEventId`
+/// under an advisory lock, and separately refuses to make a second click on the
+/// same decision payable. The key was always sent; nothing ever resent it.
+fn queue_click_report(
+    pending_reports: &mut Vec<PendingEventReport>,
+    creative: &AdCreative,
+    url: &str,
+) {
     let Some(ad_decision_id) = &creative.ad_decision_id else {
         return;
     };
+    let client_event_id = next_click_event_id(ad_decision_id);
     let mut body = serde_json::json!({
         "adDecisionId": ad_decision_id,
-        "clientEventId": next_click_event_id(ad_decision_id),
+        "clientEventId": client_event_id,
         "url": url,
     });
     if let Some(token) = creative.decision_token.as_deref() {
         body["decisionToken"] = serde_json::json!(token);
     }
-    report_api_event("/api/events/click", body.to_string());
+    pending_reports.push(PendingEventReport {
+        key: client_event_id,
+        path: CLICK_EVENT_PATH,
+        body: body.to_string(),
+        in_flight: false,
+        next_attempt_at: Instant::now(),
+        created_at: Instant::now(),
+        attempts: 0,
+    });
 }
 
 fn next_click_event_id(ad_decision_id: &str) -> String {
@@ -1201,13 +1225,6 @@ fn next_click_event_id(ad_decision_id: &str) -> String {
         sequence,
         ad_decision_id
     )
-}
-
-fn report_api_event(path: &str, body: String) {
-    let url = api_url(path);
-    thread::spawn(move || {
-        let _ = api_post(&url, body);
-    });
 }
 
 struct RemoteTerminalSessionGuard {
@@ -1428,7 +1445,7 @@ fn run_sponsor_pane() -> Result<()> {
     let mut last_remote_check = Instant::now();
     let mut reported_ad_decision_ids = HashSet::new();
     let mut exhausted_ad_decision_ids = HashSet::new();
-    let mut pending_impression_reports = Vec::new();
+    let mut pending_event_reports = Vec::new();
     let (impression_result_tx, impression_result_rx) = mpsc::channel();
     let mut hovered_ad_cell = None;
     let mut hovered_link = None;
@@ -1491,7 +1508,7 @@ fn run_sponsor_pane() -> Result<()> {
                         let url = link_url(&link);
                         open_url(&url).ok();
                         if full_creative_fits(&creative, layout) {
-                            report_click(&creative, &url);
+                            queue_click_report(&mut pending_event_reports, &creative, &url);
                         }
                         render_fullscreen_ad(
                             &mut stdout,
@@ -1602,7 +1619,7 @@ fn run_sponsor_pane() -> Result<()> {
         if last_ad_check.elapsed() >= Duration::from_secs(1) {
             let layout = Layout::current();
             pump_impression_reports(
-                &mut pending_impression_reports,
+                &mut pending_event_reports,
                 &mut reported_ad_decision_ids,
                 &mut exhausted_ad_decision_ids,
                 &impression_result_rx,
@@ -1614,7 +1631,7 @@ fn run_sponsor_pane() -> Result<()> {
                     &creative,
                     &reported_ad_decision_ids,
                     &exhausted_ad_decision_ids,
-                    &mut pending_impression_reports,
+                    &mut pending_event_reports,
                     layout,
                     &mut next_render_sequence,
                     creative_visible_since.elapsed().as_millis().min(86_400_000),
