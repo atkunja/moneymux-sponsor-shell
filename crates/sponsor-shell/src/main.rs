@@ -317,6 +317,17 @@ fn run() -> Result<i32> {
         }
         return Ok(0);
     }
+    if args
+        .first()
+        .is_some_and(|arg| arg == "claude-status-line-setup")
+    {
+        let executable = env::current_exe().context("failed to locate sponsor-shell")?;
+        let executable = executable
+            .to_str()
+            .context("status line executable path must be UTF-8")?;
+        print!("{}", claude_status_line_setup(executable));
+        return Ok(0);
+    }
     if args.first().is_some_and(|arg| arg == "harness-hooks") {
         let harness = args
             .get(1)
@@ -909,6 +920,45 @@ fn device_token() -> Option<String> {
 
 fn default_ad_creative() -> AdCreative {
     railway_example_creative()
+}
+
+/// Print-only setup guidance for the Claude status line.
+///
+/// Prints what it costs before it prints the configuration. Claude Code drops
+/// most built-in footer hints once any custom status line is configured,
+/// including `esc to interrupt` — the documented way to stop a running model.
+/// Trading that away for an advertisement is a decision the user makes, not one
+/// this tool makes quietly on their behalf, so the trade is stated first and the
+/// removal instructions are stated last.
+fn claude_status_line_setup(executable: &str) -> String {
+    let command = crate::shell_join([executable.to_string(), "claude-status-line".to_string()]);
+    let settings = serde_json::json!({
+        "statusLine": { "type": "command", "command": command },
+    });
+    format!(
+        "Before you install this, know what it costs:\n\
+         \n\
+         - Claude Code hides most built-in footer hints once any custom status\n\
+         \x20 line is configured, including `esc to interrupt`. That is the\n\
+         \x20 documented way to stop a running model, and it will stop being\n\
+         \x20 shown to you.\n\
+         - It replaces any status line you already have. Merge this into your\n\
+         \x20 existing configuration rather than overwriting the file.\n\
+         - It shows a sponsor name and link only. It is not a billable\n\
+         \x20 impression: the command runs even while the status line is hidden.\n\
+         \n\
+         It reads the session JSON Claude Code sends on stdin and discards it\n\
+         without parsing. Nothing from it is stored or sent anywhere, and this\n\
+         command makes no network request at all.\n\
+         \n\
+         Add to the `statusLine` key of your chosen Claude settings file:\n\
+         \n\
+         {}\n\
+         \n\
+         To remove it, delete that `statusLine` key. Nothing else is installed\n\
+         and no background process is left running.\n",
+        serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
+    )
 }
 
 /// One sponsored status-line row for Claude Code, or nothing.
@@ -3352,6 +3402,33 @@ mod tests {
         let line = claude_status_line(&creative).unwrap();
         assert!(!line.contains("\u{1b}[2J"), "{line:?}");
         assert!(!line.contains('\n'), "{line:?}");
+    }
+
+    // Someone who runs setup must learn the cost before the configuration, not
+    // discover it when `esc to interrupt` stops appearing mid-turn.
+    #[test]
+    fn setup_states_the_interrupt_cost_before_the_configuration() {
+        let output = claude_status_line_setup("/tmp/sponsor-shell");
+        let cost = output
+            .find("esc to interrupt")
+            .expect("cost must be stated");
+        let config = output
+            .find("\"statusLine\"")
+            .expect("config must be printed");
+        assert!(cost < config, "the cost has to come first");
+        assert!(output.contains("delete that `statusLine` key"), "{output}");
+        assert!(output.contains("not a billable"), "{output}");
+    }
+
+    #[test]
+    fn setup_quotes_a_path_with_spaces_and_only_prints() {
+        let output = claude_status_line_setup("/tmp/my sponsor/sponsor-shell");
+        assert!(
+            output.contains("'/tmp/my sponsor/sponsor-shell' claude-status-line"),
+            "{output}"
+        );
+        // Print-only: it must never claim to have written anything.
+        assert!(!output.to_lowercase().contains("installed to"), "{output}");
     }
 
     #[test]
