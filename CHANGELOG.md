@@ -4,6 +4,29 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.4 - 2026-09-05
+
+### Fixed
+
+- Report an impression only after five continuous seconds on screen, matching
+  the server's viewable-impression floor. 0.1.3 reported at one second, which
+  the server refuses, so a publisher running the released client could not earn
+  anything at all. This is the release that makes earning work.
+- Stop retrying a report the server has refused. A rejected payload never
+  becomes acceptable, so the previous four minutes of backoff produced up to
+  eight pointless requests per event and delayed marking it exhausted. A
+  refusal is now recorded as exhausted rather than delivered, because nothing
+  was billed.
+
+### Added
+
+- `claude-spinner-setup`, a print-only command emitting an opt-in sponsored
+  entry for Claude Code's `spinnerTipsOverride` rotation, labelled `Sponsored`
+  so the disclosure is part of the rendered line. It deliberately does not use
+  `spinnerVerbs`, which describes what Claude is doing, and does not set
+  `excludeDefault`. It earns nothing: Claude Code renders the rotation itself
+  and reports nothing back.
+
 ### Added
 
 - Explicit protected Claude Code/Codex terminal wrappers with no automatic ad

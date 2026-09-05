@@ -41,8 +41,8 @@ that exact commit. Replace the example version in both commands:
 ```sh
 git switch main
 git pull --ff-only origin main
-git tag --annotate v0.1.3 --message "Sponsor Shell v0.1.3"
-git push origin v0.1.3
+git tag --annotate v0.1.4 --message "Sponsor Shell v0.1.4"
+git push origin v0.1.4
 ```
 
 Do not move, recreate, or force-push a published release tag. npm package
@@ -55,10 +55,10 @@ the GitHub release both succeed, verify the published package without relying
 on a repository checkout:
 
 ```sh
-npm view @moneymux/sponsor-shell@0.1.3 version dist.integrity repository.url
-npm exec --yes --package=@moneymux/sponsor-shell@0.1.3 -- sponsor-shell --version
+npm view @moneymux/sponsor-shell@0.1.4 version dist.integrity repository.url
+npm exec --yes --package=@moneymux/sponsor-shell@0.1.4 -- sponsor-shell --version
 SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
-  npm exec --yes --package=@moneymux/sponsor-shell@0.1.3 -- sponsor-shell doctor
+  npm exec --yes --package=@moneymux/sponsor-shell@0.1.4 -- sponsor-shell doctor
 ```
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one

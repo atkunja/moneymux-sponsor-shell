@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.3
+npm install --global @moneymux/sponsor-shell@0.1.4
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
@@ -62,8 +62,7 @@ sponsor-shell harness codex
 These keep the ad in a side pane instead of automatically covering the harness.
 Optional local hooks add short-lived activity labels without sending prompts or
 tool output to MoneyMux. See [HARNESS_INTEGRATION.md](HARNESS_INTEGRATION.md) for
-manual setup, privacy, supported behavior and testing. These new commands are
-unreleased and are not yet included in the npm 0.1.3 package above.
+manual setup, privacy, supported behavior and testing.
 
 Sponsor Shell supports macOS and Linux on arm64 and x64. `tmux` is required.
 When it is missing, normal execution stops with installation guidance. Install

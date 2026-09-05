@@ -9,13 +9,21 @@ of two rows). Users can still move the divider themselves.
 
 ## Start a protected terminal session
 
-Build the current source first; these commands are not in npm release 0.1.3:
+These commands ship in 0.1.4. Install it, or build the current source if you
+are following changes that are not in a release yet:
+
+```sh
+npm install --global @moneymux/sponsor-shell@0.1.4
+sponsor-shell harness claude
+sponsor-shell harness codex
+sponsor-shell harness codex -- --help
+```
+
+Building from source instead, where `./target/release/sponsor-shell` replaces
+`sponsor-shell` in every command on this page:
 
 ```sh
 cargo build --locked --release
-./target/release/sponsor-shell harness claude
-./target/release/sponsor-shell harness codex
-./target/release/sponsor-shell harness codex -- --help
 ```
 
 Arguments following the harness name (or optional `--`) are passed unchanged.
