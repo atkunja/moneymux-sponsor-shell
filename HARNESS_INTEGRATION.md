@@ -58,6 +58,32 @@ socket directory is removed on normal wrapper exit. A force-killed wrapper may
 leave an empty directory/socket inode in the operating system's temporary area;
 it contains no prompt, transcript or token data.
 
+## Optional sponsored spinner tip
+
+The waiting state itself. `spinnerTipsOverride` is a documented Claude Code
+setting that adds an entry to the tip rotation shown while a turn runs, and
+Claude Code renders it as `<label>: <text>` — so with a `Sponsored` label the
+disclosure is part of the line.
+
+```sh
+./target/release/sponsor-shell claude-spinner-setup
+```
+
+Print-only. It emits the JSON to merge into your own settings and never writes a
+file.
+
+Two deliberate refusals. It does **not** use `spinnerVerbs`: that slot says what
+Claude is doing — "Accomplishing", "Baking" — so a sponsor there dresses an
+advertisement up as the model's own status. And it does **not** set
+`excludeDefault`, so Claude Code's built-in tips keep showing alongside it.
+
+It earns nothing. Claude Code renders the rotation itself and reports nothing
+back, so there is no impression, no click and no visibility signal to bill on.
+Earnings come from the sidecar, which can observe its own pane. The creative is
+fixed when you install it; re-run the command to refresh it.
+
+Remove it by deleting the `spinnerTipsOverride` key you added.
+
 ## Optional Claude status line
 
 A second, separate placement: one sponsored row beneath Claude Code's own

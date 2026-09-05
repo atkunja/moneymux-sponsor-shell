@@ -333,6 +333,13 @@ fn run() -> Result<i32> {
     }
     if args
         .first()
+        .is_some_and(|arg| arg == "claude-spinner-setup")
+    {
+        print!("{}", claude_spinner_setup(load_ad_creative().as_ref()));
+        return Ok(0);
+    }
+    if args
+        .first()
         .is_some_and(|arg| arg == "claude-status-line-setup")
     {
         let executable = env::current_exe().context("failed to locate sponsor-shell")?;
@@ -973,6 +980,87 @@ fn claude_status_line_setup(executable: &str) -> String {
          and no background process is left running.\n",
         serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
     )
+}
+
+/// Print-only setup guidance for the sponsored spinner tip.
+///
+/// Prints the limits before the configuration, like the status-line setup. The
+/// honest ones here are that this placement earns nothing and cannot be
+/// measured, and that the creative is fixed at install time.
+fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
+    let Some(tip) = creative.and_then(claude_spinner_tip) else {
+        return "No approved creative is available locally, so there is no sponsored tip to \
+                install yet.\nRun the sidecar once to fetch one, then re-run this command.\n"
+            .to_string();
+    };
+    let settings = serde_json::json!({
+        "spinnerTipsOverride": {
+            // Claude Code renders "<label>: <text>", so the disclosure travels
+            // with the line and cannot be separated from it.
+            "label": "Sponsored",
+            "tips": [tip],
+        },
+    });
+    format!(
+        "Before you install this, know what it does:\n\
+         \n\
+         - It adds one sponsored line to the tip rotation Claude Code shows\n\
+         \x20 while a turn runs. It does not replace the spinner verb, which\n\
+         \x20 describes what Claude is doing; an advertisement there would be\n\
+         \x20 pretending to be the model's own status.\n\
+         - It earns nothing. Claude Code renders the rotation itself and\n\
+         \x20 reports nothing back, so there is no impression, no click and no\n\
+         \x20 visibility signal. Earnings come from the sidecar.\n\
+         - `excludeDefault` is deliberately absent, so Claude Code's own tips\n\
+         \x20 keep showing alongside this one.\n\
+         - The creative is fixed at install. Re-run this command to refresh it.\n\
+         \n\
+         Merge into the `spinnerTipsOverride` key of your Claude settings:\n\
+         \n\
+         {}\n\
+         \n\
+         To remove it, delete that `spinnerTipsOverride` key.\n",
+        serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
+    )
+}
+
+/// One sponsored spinner tip for Claude Code, or nothing.
+///
+/// `spinnerTipsOverride` puts an entry in the rotation Claude Code shows while a
+/// turn runs — the waiting state itself, which is the placement this product
+/// exists to sell. Claude Code renders it as `<label>: <text>`, so with a
+/// `Sponsored` label the disclosure is part of the line rather than an
+/// afterthought.
+///
+/// Deliberately a tip and not a `spinnerVerbs` entry. The verb slot says what
+/// Claude is doing — "Accomplishing", "Baking" — so putting a sponsor there
+/// dresses an advertisement up as the model's own status. A competitor does
+/// exactly that. It reads as native because it is pretending to be native, and
+/// this product discloses instead.
+///
+/// Not billable and not trackable. Claude Code renders the rotation itself and
+/// tells nobody, so there is no impression, no click and no visibility signal
+/// here at all — unlike the sidecar, which can observe its own pane.
+fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
+    if creative.id == "local-disabled" {
+        return None;
+    }
+    let sponsor = sanitize_terminal_text(&creative.sponsor);
+    let sponsor = sponsor.trim();
+    if sponsor.is_empty() {
+        return None;
+    }
+    let url = canonical_https_url(&creative.url);
+    // Claude Code caps tip text at 500 characters and collapses whitespace
+    // itself. Bound both parts well inside that so the sponsor and its
+    // destination always survive together rather than the URL being cut off.
+    let sponsor = truncate_chars(sponsor, 60);
+    let url = truncate_chars(&url, 200);
+    Some(serde_json::json!({
+        // Stable so Claude Code keeps this tip's show history across edits.
+        "id": "moneymux-sponsor",
+        "text": format!("{sponsor} — {url}"),
+    }))
 }
 
 /// One sponsored status-line row for Claude Code, or nothing.
@@ -3741,6 +3829,89 @@ mod tests {
         assert!(pending.is_empty(), "must stop retrying");
         assert!(exhausted.contains("decision-1"));
         assert!(!reported.contains("decision-1"), "refused is not delivered");
+    }
+
+    #[test]
+    fn the_spinner_tip_carries_the_sponsor_and_its_destination() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let tip = claude_spinner_tip(&creative).unwrap();
+        assert_eq!(tip["id"], "moneymux-sponsor");
+        let text = tip["text"].as_str().unwrap();
+        assert!(text.contains("Railway"), "{text}");
+        // Forced https so a creative cannot put another scheme in the spinner.
+        assert!(text.contains("https://railway.app"), "{text}");
+        // Claude Code caps tip text at 500 characters.
+        assert!(text.chars().count() <= 500, "{}", text.chars().count());
+    }
+
+    #[test]
+    fn a_long_creative_still_fits_a_spinner_tip() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "S".repeat(400),
+            url: format!("example.test/{}", "p".repeat(400)),
+            ..inactive_creative()
+        };
+        let tip = claude_spinner_tip(&creative).unwrap();
+        let text = tip["text"].as_str().unwrap();
+        assert!(text.chars().count() <= 500, "{}", text.chars().count());
+        // The destination must survive truncation, not be cut off entirely.
+        assert!(text.contains("https://example.test/"), "{text}");
+    }
+
+    #[test]
+    fn no_inventory_installs_no_spinner_tip() {
+        assert!(claude_spinner_tip(&inactive_creative()).is_none());
+        let setup = claude_spinner_setup(None);
+        assert!(setup.contains("No approved creative"), "{setup}");
+        assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
+    }
+
+    // The verb slot says what Claude is doing. Putting a sponsor there dresses
+    // an advertisement up as the model's own status, so the config must never
+    // touch it, and must not silence Claude Code's own tips either.
+    #[test]
+    fn spinner_setup_uses_the_tip_slot_and_keeps_the_built_in_tips() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let setup = claude_spinner_setup(Some(&creative));
+        assert!(setup.contains("\"spinnerTipsOverride\""), "{setup}");
+        assert!(!setup.contains("spinnerVerbs"), "{setup}");
+        // Quoted, so this checks the JSON key rather than the prose that
+        // explains why the key is absent.
+        assert!(!setup.contains("\"excludeDefault\""), "{setup}");
+        assert!(setup.contains("\"label\": \"Sponsored\""), "{setup}");
+    }
+
+    // Someone installing this has to know it pays nothing before they see the
+    // configuration, not after wondering why no earnings appear.
+    #[test]
+    fn spinner_setup_states_it_earns_nothing_before_the_configuration() {
+        let creative = AdCreative {
+            id: "decision-1".into(),
+            sponsor: "Railway".into(),
+            url: "railway.app".into(),
+            ..inactive_creative()
+        };
+        let setup = claude_spinner_setup(Some(&creative));
+        let cost = setup
+            .find("earns nothing")
+            .expect("must say it earns nothing");
+        let config = setup.find("spinnerTipsOverride").expect("config printed");
+        assert!(cost < config, "the limit has to come first");
+        assert!(
+            setup.contains("delete that `spinnerTipsOverride` key"),
+            "{setup}"
+        );
     }
 
     #[test]
