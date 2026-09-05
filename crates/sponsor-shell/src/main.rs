@@ -3890,6 +3890,17 @@ mod tests {
         assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
     }
 
+    #[test]
+    fn spinner_setup_prefers_current_remote_inventory() {
+        let mut remote = railway_example_creative();
+        remote.id = "remote-current".into();
+        let mut local = railway_example_creative();
+        local.id = "local-draft".into();
+
+        let selected = select_claude_spinner_creative(Some(remote), Some(local)).unwrap();
+        assert_eq!(selected.id, "remote-current");
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
