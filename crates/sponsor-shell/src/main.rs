@@ -3916,6 +3916,47 @@ mod tests {
         assert!(select_claude_spinner_creative(None, None).is_none());
     }
 
+    #[test]
+    fn spinner_setup_fetches_current_linked_inventory() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(
+                listener,
+                "200 OK",
+                r#"{"adDecisionId":"decision-spinner","decisionToken":"signed.token","creative":{"enabled":true,"sponsor":"Current campaign","url":"https://campaign.example"}}"#,
+            )
+        });
+
+        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
+        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
+        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
+        env::set_var(SPONSOR_API_BASE_ENV, &base_url);
+        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
+        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
+
+        let creative = load_claude_spinner_creative().unwrap();
+        let request = server.join().unwrap();
+
+        match previous_api {
+            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
+            None => env::remove_var(SPONSOR_API_BASE_ENV),
+        }
+        match previous_device {
+            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
+        }
+        match previous_token {
+            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
+        }
+
+        assert_eq!(creative.sponsor, "Current campaign");
+        assert!(request.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(!request.contains("/api/events/"));
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
