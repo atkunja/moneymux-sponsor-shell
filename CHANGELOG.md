@@ -4,6 +4,14 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+### Fixed
+
+- `claude-spinner-setup` now selects current eligible campaign inventory for a
+  linked terminal. 0.1.4 only inspected the optional local creative file while
+  telling users that the sidecar would cache remote creative, but the sidecar
+  never writes that file, so the published command could not complete from a
+  normal linked installation.
+
 ## 0.1.4 - 2026-09-05
 
 ### Fixed
