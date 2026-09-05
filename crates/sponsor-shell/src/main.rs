@@ -3595,6 +3595,50 @@ mod tests {
     }
 
     #[test]
+    fn a_link_span_ends_where_it_is_displayed() {
+        let creative = AdCreative {
+            url: "https://example.test/offer".into(),
+            ..inactive_creative()
+        };
+        let line = "é https://example.test/offer";
+        let start = 2;
+        let end = start + "https://example.test/offer".chars().count();
+        assert!(link_at_column(line, &creative, end - 1).is_some());
+        // One past the end must not open anything; the byte version did.
+        assert!(link_at_column(line, &creative, end).is_none());
+        // Nor may the accent or the space before it.
+        assert!(link_at_column(line, &creative, 0).is_none());
+        assert!(link_at_column(line, &creative, 1).is_none());
+    }
+
+    #[test]
+    fn several_multibyte_characters_shift_the_span_no_further() {
+        let creative = AdCreative {
+            url: "https://example.test/x".into(),
+            ..inactive_creative()
+        };
+        let line = "café — https://example.test/x";
+        let start = line.chars().position(|c| c == 'h').unwrap();
+        assert!(link_at_column(line, &creative, start).is_some());
+        assert!(link_at_column(line, &creative, start - 1).is_none());
+    }
+
+    // The underline must mark the cells the click actually opens.
+    #[test]
+    fn the_hover_underline_covers_the_clickable_columns() {
+        let creative = AdCreative {
+            url: "https://example.test/offer".into(),
+            ..inactive_creative()
+        };
+        let line = "é https://example.test/offer";
+        let hovered = linkified_line(line, &creative, Some(2));
+        assert!(hovered.contains("\x1b[4m"), "{hovered}");
+        // The accent is outside the link, so hovering it underlines nothing.
+        let elsewhere = linkified_line(line, &creative, Some(0));
+        assert!(!elsewhere.contains("\x1b[4m"), "{elsewhere}");
+    }
+
+    #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
         assert_eq!(impression_retry_delay(1), Duration::from_secs(2));
