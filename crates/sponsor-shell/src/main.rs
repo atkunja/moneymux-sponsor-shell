@@ -1427,6 +1427,7 @@ fn run_sponsor_pane() -> Result<()> {
     let ad_while_working = ad_while_working_enabled();
     let mut idle_delay = idle_fullscreen_delay(&creative);
     let mut creative_visible_since = Instant::now();
+    let mut visible_geometry = None;
     let mut last_cols = Layout::current().cols;
     let tmux = SponsorTmux::from_env();
 
@@ -1443,6 +1444,10 @@ fn run_sponsor_pane() -> Result<()> {
     let mut pane_fitted = false;
 
     loop {
+        let current_layout = Layout::current();
+        if visibility_geometry_changed(&mut visible_geometry, &creative, current_layout) {
+            creative_visible_since = Instant::now();
+        }
         if let Some(activity) = &mut activity {
             activity.poll();
         }
@@ -2461,6 +2466,13 @@ fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
         && ad_body_lines(creative, inner_width)
             .iter()
             .all(|line| line.chars().count() <= inner_width)
+}
+
+fn visibility_geometry_changed(previous: &mut Option<(u16, u16)>, creative: &AdCreative, layout: Layout) -> bool {
+    let next = full_creative_fits(creative, layout).then_some((layout.cols, layout.rows));
+    let restart = next.is_none() || next != *previous;
+    *previous = next;
+    restart
 }
 
 fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
