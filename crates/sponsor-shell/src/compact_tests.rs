@@ -1,6 +1,26 @@
 use super::*;
 
 #[test]
+fn full_creative_keeps_original_signed_geometry_and_minimum_duration() {
+    let mut creative = default_ad_creative();
+    creative.ad_decision_id = Some("full-decision".into());
+    creative.decision_token = Some("fixture-token".into());
+    let mut pending = Vec::new();
+    let mut sequence = 1;
+    let layout = Layout::new(80, ad_height(&creative, 80));
+    assert!(full_creative_fits(&creative, layout));
+    assert!(!enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
+        &mut pending, layout, &mut sequence, 999));
+    assert!(enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
+        &mut pending, layout, &mut sequence, 1_000));
+    let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
+    assert_eq!(body["lineCount"], ad_height(&creative, 80));
+    assert_eq!(body["decisionToken"], "fixture-token");
+    assert_eq!(body["visibleDurationMs"], 1_000);
+    assert_eq!(sequence, 2);
+}
+
+#[test]
 fn short_panes_never_queue_or_consume_an_impression_sequence() {
     let mut creative = default_ad_creative();
     creative.ad_decision_id = Some("signed-preview".into());
