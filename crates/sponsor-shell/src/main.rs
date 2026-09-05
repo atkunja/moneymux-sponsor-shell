@@ -2445,6 +2445,25 @@ fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
         && ad_body_lines(creative, inner_width).iter().all(|line| line.chars().count() <= inner_width)
 }
 
+fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
+    let width = usize::from(cols);
+    let inner = width.saturating_sub(2);
+    let capacity = usize::from(rows).saturating_sub(2);
+    // Never crop a destination into a different-looking clickable address.
+    let mut body = wrap_text(&format!("Sponsored preview: {}", creative.sponsor), inner.max(1), usize::MAX);
+    body.push(creative.url.clone());
+    body.extend(wrap_text(&format!("[{}]", creative.disclosure), inner.max(1), usize::MAX));
+    if inner == 0 || creative.url.is_empty() || creative.url.chars().count() > inner || body.len() > capacity {
+        body = vec!["Sponsor hidden: enlarge pane".to_string()];
+        body.truncate(capacity);
+    }
+    let mut lines = vec![border_line(width)];
+    lines.extend(body.iter().map(|line| inside_line(width, line)));
+    lines.push(border_line(width));
+    lines.truncate(usize::from(rows));
+    lines
+}
+
 // The ad is a box that hugs its art: the variant is picked by the horizontal
 // space available (large art when it fits, small otherwise) and the box is
 // exactly as tall as the art — never padded with empty rows.
@@ -2455,6 +2474,9 @@ fn ad_lines(creative: &AdCreative, cols: u16, rows: u16, _frame: u64) -> Vec<Str
     }
     if rows == 1 {
         return vec![border_line(width)];
+    }
+    if !full_creative_fits(creative, Layout::new(cols, rows)) {
+        return short_ad_lines(creative, cols, rows);
     }
 
     // Borders take 2 columns; the art is drawn one space in from the left.
