@@ -1376,6 +1376,7 @@ fn sanitize_terminal_text(value: &str) -> String {
 
 fn run_sponsor_pane() -> Result<()> {
     let _guard = PaneGuard::enter()?;
+    let mut activity = harness::Activity::from_env();
     let mut stdout = io::stdout();
     let terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
     let mut ads_shown_this_session = 0_u64;
@@ -1510,7 +1511,9 @@ fn run_sponsor_pane() -> Result<()> {
                     return Ok(());
                 }
 
-                if !fullscreen {
+                // Lifecycle hints do not prove the app is safe to obscure. Even
+                // stale/missing hooks, idle input and the legacy opt-in must not zoom it.
+                if !fullscreen && activity.is_none() {
                     let client_idle = tmux.client_idle_for();
                     // Only query the app pane when the opt-in mode needs it.
                     let app_pane_idle = if ad_while_working {
@@ -2730,7 +2733,7 @@ mod tests {
 
         let mut request = Vec::new();
         let mut expected_length = None;
-        loop {
+    loop {
             let mut chunk = [0_u8; 1024];
             let count = stream.read(&mut chunk).unwrap();
             if count == 0 {
