@@ -16,6 +16,12 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ### Fixed
 
+- Use percentage-valued `split-window -l` for tmux 3.4 compatibility instead of
+  the broken/deprecated `-p` form. Use level-triggered terminal input polling so
+  resize readiness cannot strand a pending Ctrl-C in the sponsor pane on Linux.
+- Keep the supervisory shell alive long enough to preserve a wrapped program's
+  interrupt exit code, while allowing programs that handle Ctrl-C to continue.
+
 - Preserve the wrapped program's exit status under zsh, whose `status` variable
   is read-only. Quote the complete exit trap so paths with spaces and apostrophes
   remain safe. Regression coverage executes the trap in both bash and zsh.

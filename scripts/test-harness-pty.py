@@ -26,7 +26,7 @@ def claim_controlling_terminal():
     fcntl.ioctl(0, termios.TIOCSCTTY, 0)
 
 
-def check(binary, provider, interrupt=False):
+def check(binary, provider, interrupt=False, survive_interrupt=False):
     # /tmp keeps Unix socket paths below macOS's length limit.
     with tempfile.TemporaryDirectory(prefix="mmh-test-", dir="/tmp") as temporary:
         root = Path(temporary)
@@ -35,6 +35,9 @@ def check(binary, provider, interrupt=False):
         fake = bin_dir / provider
         fake.write_text("""#!/bin/sh
 trap 'exit 130' INT
+if [ "$SPONSOR_TEST_SURVIVE_INTERRUPT" = "1" ]; then
+  trap 'printf "INTERRUPT_SURVIVED\\n"' INT
+fi
 printf 'HARNESS_ARGS:'
 printf '<%s>' "$@"
 printf '\\n'
@@ -45,7 +48,7 @@ while [ ! -S "$SPONSOR_SHELL_HOOK_SOCKET" ] && [ "$attempt" -lt 50 ]; do
 done
 printf '%s' '{"hook_event_name":"PermissionRequest","prompt":"PRIVATE_FIXTURE","transcript_path":"/do-not-read"}' | "$SPONSOR_TEST_BINARY" harness-event "$SPONSOR_SHELL_HARNESS"
 printf 'PERMISSION_PROMPT_VISIBLE\\n'
-read -r reply
+while ! read -r reply; do :; done
 exit 37
 """)
         fake.chmod(0o700)
@@ -58,6 +61,7 @@ exit 37
             "TMUX_TMPDIR": temporary, "TMPDIR": temporary,
             "TERM": "xterm-256color", "CI": "1",
             "SPONSOR_TEST_BINARY": str(binary),
+            "SPONSOR_TEST_SURVIVE_INTERRUPT": "1" if survive_interrupt else "0",
             "SPONSOR_SHELL_CONFIG": str(root / "absent-config.json"),
             "SPONSOR_SHELL_AD_FILE": str(root / "absent-ad.json"),
             "SPONSOR_SHELL_IDLE_FULLSCREEN_SECONDS": "1",
@@ -129,15 +133,20 @@ exit 37
                 # Clicking the ad pane must not strand Ctrl-C away from the app.
                 tmux("select-pane", "-t", f"{session}:0.0")
                 tmux("send-keys", "-t", f"{session}:0.0", "C-c")
+                if survive_interrupt:
+                    wait_for(lambda: "INTERRUPT_SURVIVED" in capture(1))
+                    assert tmux("display-message", "-p", "-t", f"{session}:0.1", "#{pane_active}") == "1"
+                    tmux("send-keys", "-t", f"{session}:0.1", "q", "Enter")
             else:
                 tmux("send-keys", "-t", f"{session}:0.1", "q", "Enter")
             deadline = time.monotonic() + 5
             while child.poll() is None and time.monotonic() < deadline:
                 drain_terminal(0.05)
-            expected_exit = 130 if interrupt else 37
+            expected_exit = 130 if interrupt and not survive_interrupt else 37
             assert child.poll() == expected_exit, f"unexpected exit: {child.poll()}, app: {capture(1)!r}, ad: {capture(0)!r}, panes: {tmux('list-panes', '-t', session, '-F', '#{pane_index}:#{pane_active}:#{pane_current_command}', required=False)!r}"
             assert not list(root.glob("mmh-*")), "wrapper did not clean its local channel"
             print(json.dumps({"provider": provider, "pty": "passed", "exit": expected_exit,
+                              "survive_interrupt": survive_interrupt,
                               "hook_privacy": "passed", "stale_hint_no_takeover": "passed"}))
         finally:
             if child and child.poll() is None:
@@ -157,3 +166,4 @@ if __name__ == "__main__":
     for selected in ["claude", "codex"]:
         check(executable, selected)
     check(executable, "codex", interrupt=True)
+    check(executable, "codex", interrupt=True, survive_interrupt=True)

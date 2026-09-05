@@ -10,6 +10,11 @@ shell or developer tool in one pane, and renders the sponsor creative in a
 second pane. The requested executable and arguments are passed to the wrapped
 process locally.
 
+The sponsor pane reads its own `/dev/tty` keyboard/mouse/resize events using
+Crossterm's level-triggered input backend. This does not read the wrapped
+program's terminal output or scrollback. Ctrl-C pressed in the sponsor pane is
+forwarded to the app pane; other sponsor-pane key events return focus to the app.
+
 The generic wrapper uses local `tmux` activity timestamps to decide whether the
 user is idle and whether an opt-in activity-based placement should expand. It
 cannot distinguish a spinner from streamed output. These timestamps are not

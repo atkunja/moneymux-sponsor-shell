@@ -1439,7 +1439,9 @@ fn run_sponsor_pane() -> Result<()> {
         if let Some(activity) = &mut activity {
             activity.poll();
         }
-        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
+        // The level-triggered /dev/tty backend preserves pending keys across
+        // resize notifications. Its polling loop requires a nonzero deadline.
+        while event::poll(Duration::from_millis(1)).unwrap_or(false) {
             match event::read().context("failed to read sponsor pane input")? {
                 event::Event::Mouse(mouse) => {
                     let layout = Layout::current();
@@ -1773,7 +1775,10 @@ fn sponsor_app_command(exit_file: &str, session: &str, app_parts: Vec<String>) -
         shell_quote(session),
     );
     format!(
-        "trap {} EXIT; {}",
+        // Catch (do not ignore) SIGINT in the supervisory shell. The wrapped
+        // process receives it normally and decides whether to stop or continue;
+        // dash must not exit before recording the wrapped process's status.
+        "trap {} EXIT; trap ':' INT; {}",
         shell_quote(&exit_trap),
         shell_join(app_parts)
     )

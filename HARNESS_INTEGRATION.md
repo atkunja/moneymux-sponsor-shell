@@ -120,15 +120,31 @@ release gates.
 - Rust 1.96.1 on macOS arm64: formatting, strict Clippy, 53 unit tests and three
   compiled-CLI integration tests passed; optimized release build passed.
 - Three npm-launcher tests and release-metadata consistency passed.
-- Dependency policy passed, with the existing non-blocking duplicate `syn`
-  dependency warning. No dependencies or lockfile changed in this work.
+- Dependency policy passed for the initial bridge, with the existing non-blocking
+  duplicate `syn` dependency warning. Linux acceptance subsequently selected
+  Crossterm's supported `use-dev-tty` input backend (adding `filedescriptor` and
+  its `thiserror` dependency) to avoid losing keys alongside resize readiness.
+  This backend uses level-triggered polling with a one-millisecond deadline;
+  zero-timeout polls are unsupported by its event loop.
+  Dependency policy was rerun successfully with those three new locked packages.
 - Synthetic Claude and Codex PTYs each preserved exit 37, literal metacharacter
   arguments, stale-server socket isolation, private-input suppression, visible
   permission prompts at 100x36 and 48x18, and no zoom beyond the ten-second lease.
-  A third Codex fixture forwarded Ctrl-C from the selected ad pane and preserved
-  exit 130. All three runs cleaned their private hook directories.
+  The final suite passed on macOS arm64 and a clean Debian Linux arm64 container:
+  a third Codex fixture forwarded Ctrl-C after resize from the selected ad pane
+  and preserved exit 130; a fourth handled the interrupt, stayed open, then
+  preserved its later exit 37. All runs cleaned their private hook directories.
+  The supervisory shell catches SIGINT without ignoring it, so the wrapped
+  process still receives it normally and controls whether its session ends.
 - Installed vendor binaries reported `codex-cli 0.144.1` and Claude Code
   `2.1.191`; this records discovery only, not real provider hook acceptance.
 - The public repository still requires its normal code-owner review and hosted
   checks. This record is local evidence, not a claim that a PR is merged or that
   a new npm release is available. No staging/production flags were changed.
+
+Ubuntu's tmux 3.4 also exposed a pre-existing startup failure with `split-window
+-p`. The wrapper now uses the documented `-l 75%` form (or the configured generic
+wrapper percentage), supported by the
+[tmux manual](https://man.openbsd.org/OpenBSD-7.5/tmux.1). PTY acceptance uses a
+real controlling terminal and an isolated tmux server, with bounded synthetic
+output available if startup fails.
