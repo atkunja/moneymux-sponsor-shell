@@ -308,6 +308,13 @@ fn run() -> Result<i32> {
         println!("{}", serde_json::to_string_pretty(&harness::hook_configuration(harness, executable))?);
         return Ok(0);
     }
+    if args.first().is_some_and(|arg| arg == "harness") {
+        let harness = args.get(1).and_then(|value| harness::Harness::parse(value))
+            .context("usage: sponsor-shell harness <claude|codex> [-- arguments...]")?;
+        let remaining = &args[2..];
+        let forwarded = remaining.strip_prefix(&["--".to_string()]).unwrap_or(remaining);
+        return run_tmux_shell(harness.command(), forwarded, Some(harness));
+    }
     if args
         .first()
         .is_some_and(|arg| arg == "--help" || arg == "-h" || arg == "help")
@@ -377,6 +384,7 @@ fn help_lines() -> &'static [&'static str] {
         "Usage:",
         "  sponsor-shell [command-to-wrap] [arguments...]",
         "  sponsor-shell <management-command>",
+        "  sponsor-shell harness <claude|codex> [-- arguments...]",
         "",
         "Management commands:",
         "  login          Open the MoneyMux developer onboarding page",
@@ -386,6 +394,8 @@ fn help_lines() -> &'static [&'static str] {
         "  status         Show the current local configuration",
         "  doctor         Run secret-free local diagnostics",
         "  install-tmux   Explicitly install the required tmux dependency",
+        "  harness        Wrap Claude/Codex with a protected split pane and local hook hints",
+        "  harness-hooks  Print optional hook JSON; does not install or replace settings",
         "  help           Show this help",
         "  version        Show the installed Sponsor Shell version",
     ]
