@@ -52,6 +52,13 @@ sponsor-shell claude
 sponsor-shell bash
 ```
 
+For Claude Code's disclosed, non-billable loading-tip placement, print the
+settings fragment for the currently eligible campaign:
+
+```sh
+sponsor-shell claude-spinner-setup
+```
+
 The current source also offers opt-in protected harness sessions:
 
 ```sh
