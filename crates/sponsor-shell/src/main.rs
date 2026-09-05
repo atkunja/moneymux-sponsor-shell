@@ -300,19 +300,30 @@ fn run() -> Result<i32> {
         return Ok(0);
     }
     if args.first().is_some_and(|arg| arg == "harness-hooks") {
-        let harness = args.get(1).and_then(|value| harness::Harness::parse(value))
+        let harness = args
+            .get(1)
+            .and_then(|value| harness::Harness::parse(value))
             .filter(|_| args.len() == 2)
             .context("usage: sponsor-shell harness-hooks <claude|codex> (prints JSON only)")?;
         let executable = env::current_exe().context("failed to locate sponsor-shell")?;
-        let executable = executable.to_str().context("hook executable path must be UTF-8")?;
-        println!("{}", serde_json::to_string_pretty(&harness::hook_configuration(harness, executable))?);
+        let executable = executable
+            .to_str()
+            .context("hook executable path must be UTF-8")?;
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&harness::hook_configuration(harness, executable))?
+        );
         return Ok(0);
     }
     if args.first().is_some_and(|arg| arg == "harness") {
-        let harness = args.get(1).and_then(|value| harness::Harness::parse(value))
+        let harness = args
+            .get(1)
+            .and_then(|value| harness::Harness::parse(value))
             .context("usage: sponsor-shell harness <claude|codex> [-- arguments...]")?;
         let remaining = &args[2..];
-        let forwarded = remaining.strip_prefix(&["--".to_string()]).unwrap_or(remaining);
+        let forwarded = remaining
+            .strip_prefix(&["--".to_string()])
+            .unwrap_or(remaining);
         return run_tmux_shell(harness.command(), forwarded, Some(harness));
     }
     if args
@@ -1414,12 +1425,16 @@ fn run_sponsor_pane() -> Result<()> {
         frame,
         &creative,
         hovered_ad_cell,
+        activity.as_ref(),
     )?;
     // The app pane may not exist yet (the launcher splits it right after this
     // process starts), so the initial fit happens in the loop below once it is.
     let mut pane_fitted = false;
 
     loop {
+        if let Some(activity) = &mut activity {
+            activity.poll();
+        }
         while event::poll(Duration::from_millis(0)).unwrap_or(false) {
             match event::read().context("failed to read sponsor pane input")? {
                 event::Event::Mouse(mouse) => {
@@ -1435,6 +1450,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     }
 
@@ -1454,6 +1470,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     } else if fullscreen {
                         if let Some(tmux) = &tmux {
@@ -1466,7 +1483,14 @@ fn run_sponsor_pane() -> Result<()> {
                 }
                 event::Event::Resize(_, _) => {
                     let layout = Layout::current();
-                    render_fullscreen_ad(&mut stdout, layout, frame, &creative, hovered_ad_cell)?;
+                    render_fullscreen_ad(
+                        &mut stdout,
+                        layout,
+                        frame,
+                        &creative,
+                        hovered_ad_cell,
+                        activity.as_ref(),
+                    )?;
                     // A width change can switch the art variant, so re-fit the
                     // pane to the ad. Height-only changes are left alone — the
                     // divider stays draggable.
@@ -1533,6 +1557,7 @@ fn run_sponsor_pane() -> Result<()> {
                             frame,
                             &creative,
                             hovered_ad_cell,
+                            activity.as_ref(),
                         )?;
                     }
                 }
@@ -1596,7 +1621,14 @@ fn run_sponsor_pane() -> Result<()> {
                     idle_delay = idle_fullscreen_delay(&creative);
                     hovered_ad_cell = None;
                     hovered_link = None;
-                    render_fullscreen_ad(&mut stdout, layout, frame, &creative, hovered_ad_cell)?;
+                    render_fullscreen_ad(
+                        &mut stdout,
+                        layout,
+                        frame,
+                        &creative,
+                        hovered_ad_cell,
+                        activity.as_ref(),
+                    )?;
                     // New creative, new height — snap the pane to it.
                     if !fullscreen {
                         if let Some(tmux) = &tmux {
@@ -1617,6 +1649,7 @@ fn run_sponsor_pane() -> Result<()> {
                 frame,
                 &creative,
                 hovered_ad_cell,
+                activity.as_ref(),
             )?;
             last_animation = Instant::now();
         }
@@ -1624,10 +1657,16 @@ fn run_sponsor_pane() -> Result<()> {
     }
 }
 
-fn run_tmux_shell(command: &str, command_args: &[String], harness: Option<harness::Harness>) -> Result<i32> {
+fn run_tmux_shell(
+    command: &str,
+    command_args: &[String],
+    harness: Option<harness::Harness>,
+) -> Result<i32> {
     ensure_tmux_available()?;
 
-    let bridge = harness.map(|_| harness::BridgeDirectory::create()).transpose()
+    let bridge = harness
+        .map(|_| harness::BridgeDirectory::create())
+        .transpose()
         .context("failed to create private harness hook channel")?;
     let socket_path = bridge.as_ref().map(harness::BridgeDirectory::socket_path);
     let lifecycle_environment = harness::environment(harness, socket_path.as_deref());
@@ -2333,9 +2372,13 @@ fn render_fullscreen_ad(
     frame: u64,
     creative: &AdCreative,
     hovered_cell: Option<(u16, u16)>,
+    activity: Option<&harness::Activity>,
 ) -> Result<()> {
     queue!(stdout, cursor::Hide, terminal::Clear(ClearType::All))?;
-    let lines = ad_lines(creative, layout.cols, layout.rows, frame);
+    let mut lines = ad_lines(creative, layout.cols, layout.rows, frame);
+    if let Some(activity) = activity {
+        add_activity_footer(&mut lines, layout.cols, &activity.label());
+    }
     for row in 0..layout.rows {
         queue!(
             stdout,
@@ -2352,6 +2395,15 @@ fn render_fullscreen_ad(
     }
     stdout.flush()?;
     Ok(())
+}
+
+fn add_activity_footer(lines: &mut [String], cols: u16, label: &str) {
+    // Replace only the non-clickable closing border, never an ad body or app row.
+    if lines.len() > 1 {
+        if let Some(last) = lines.last_mut() {
+            *last = inside_line(usize::from(cols), label);
+        }
+    }
 }
 
 // The ad is a box that hugs its art: the variant is picked by the horizontal
@@ -2733,7 +2785,7 @@ mod tests {
 
         let mut request = Vec::new();
         let mut expected_length = None;
-    loop {
+        loop {
             let mut chunk = [0_u8; 1024];
             let count = stream.read(&mut chunk).unwrap();
             if count == 0 {

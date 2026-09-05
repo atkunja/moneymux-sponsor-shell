@@ -1,24 +1,33 @@
 //! Optional, local-only harness activity. These hints are never visibility or billing evidence.
 use serde::{Deserialize, Serialize};
-use std::io::Read;
 use std::fs;
+use std::io::Read;
 use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now_ms() -> Option<u64> {
-    SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_millis().try_into().ok()
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .ok()?
+        .as_millis()
+        .try_into()
+        .ok()
 }
 
 /// Hook failures must not change permissions, model context or harness exit status.
 pub fn emit(harness: Harness) {
-    let Some(path) = std::env::var_os(SOCKET_ENV) else { return };
+    let Some(path) = std::env::var_os(SOCKET_ENV) else {
+        return;
+    };
     if std::env::var(HARNESS_ENV).ok().as_deref() != Some(harness.command()) {
         return;
     }
-    let Some(hint) = read_hint(harness, std::io::stdin().lock()) else { return };
-    let _ = send_hint(&path.into(), &hint);
+    let Some(hint) = read_hint(harness, std::io::stdin().lock()) else {
+        return;
+    };
+    let _ = send_hint(Path::new(&path), &hint);
 }
 
 fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
@@ -41,8 +50,13 @@ pub struct Activity {
 impl Activity {
     pub fn from_env() -> Option<Self> {
         let harness = Harness::parse(&std::env::var(HARNESS_ENV).ok()?)?;
-        let socket = std::env::var_os(SOCKET_ENV).and_then(|path| Self::bind(Path::new(&path)).ok());
-        Some(Self { harness, socket, latest: None })
+        let socket =
+            std::env::var_os(SOCKET_ENV).and_then(|path| Self::bind(Path::new(&path)).ok());
+        Some(Self {
+            harness,
+            socket,
+            latest: None,
+        })
     }
 
     fn bind(path: &Path) -> std::io::Result<UnixDatagram> {
@@ -53,14 +67,25 @@ impl Activity {
 
     pub fn poll(&mut self) {
         let Some(socket) = &self.socket else { return };
-        let Some(now) = now_ms() else { self.latest = None; return };
+        let Some(now) = now_ms() else {
+            self.latest = None;
+            return;
+        };
         // Bound every frame's work even if a local process floods the socket.
         for _ in 0..64 {
             let mut bytes = [0_u8; 256];
-            let Ok(size) = socket.recv(&mut bytes) else { break };
-            let Ok(hint) = serde_json::from_slice::<Hint>(&bytes[..size]) else { continue };
-            if hint.harness == self.harness && valid_hint(&hint, now)
-                && self.latest.as_ref().is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
+            let Ok(size) = socket.recv(&mut bytes) else {
+                break;
+            };
+            let Ok(hint) = serde_json::from_slice::<Hint>(&bytes[..size]) else {
+                continue;
+            };
+            if hint.harness == self.harness
+                && valid_hint(&hint, now)
+                && self
+                    .latest
+                    .as_ref()
+                    .is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
             {
                 self.latest = Some(hint);
             }
@@ -72,7 +97,10 @@ impl Activity {
     }
 
     fn label_at(&self, now: u64) -> String {
-        let recent = self.latest.as_ref().filter(|hint| valid_hint(hint, now))
+        let recent = self
+            .latest
+            .as_ref()
+            .filter(|hint| valid_hint(hint, now))
             .and_then(|hint| event_label(&hint.event));
         match recent {
             Some(label) => format!("{} | recent hook: {label}", self.harness.label()),
@@ -83,19 +111,26 @@ impl Activity {
 
 fn valid_hint(hint: &Hint, now: u64) -> bool {
     events(hint.harness).contains(&hint.event.as_str())
-        && now.checked_sub(hint.sent_at_ms).is_some_and(|age| age < HINT_LEASE_MS)
+        && now
+            .checked_sub(hint.sent_at_ms)
+            .is_some_and(|age| age < HINT_LEASE_MS)
 }
 
 /// Print-only configuration: never overwrite existing hooks or bypass their trust review.
 pub fn hook_configuration(harness: Harness, executable: &str) -> serde_json::Value {
     let command = crate::shell_join([
-        executable.to_string(), "harness-event".to_string(), harness.command().to_string(),
+        executable.to_string(),
+        "harness-event".to_string(),
+        harness.command().to_string(),
     ]);
     let mut hooks = serde_json::Map::new();
     for event in events(harness) {
-        hooks.insert(event.to_string(), serde_json::json!([{
-            "hooks": [{"type": "command", "command": command, "timeout": 1}]
-        }]));
+        hooks.insert(
+            event.to_string(),
+            serde_json::json!([{
+                "hooks": [{"type": "command", "command": command, "timeout": 1}]
+            }]),
+        );
     }
     serde_json::json!({"hooks": hooks})
 }
@@ -111,8 +146,10 @@ impl BridgeDirectory {
     }
 
     fn create_under(parent: &Path) -> std::io::Result<Self> {
-        let nonce = SystemTime::now().duration_since(UNIX_EPOCH)
-            .map_err(std::io::Error::other)?.as_nanos();
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(std::io::Error::other)?
+            .as_nanos();
         for attempt in 0..32 {
             let path = parent.join(format!("mmh-{}-{nonce:x}-{attempt:x}", std::process::id()));
             match fs::DirBuilder::new().mode(0o700).create(&path) {
@@ -121,7 +158,10 @@ impl BridgeDirectory {
                 Err(error) => return Err(error),
             }
         }
-        Err(std::io::Error::new(std::io::ErrorKind::AlreadyExists, "hook directory collision"))
+        Err(std::io::Error::new(
+            std::io::ErrorKind::AlreadyExists,
+            "hook directory collision",
+        ))
     }
 
     pub fn socket_path(&self) -> PathBuf {
@@ -156,7 +196,10 @@ struct Hint {
 
 fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
     let mut bytes = Vec::new();
-    reader.take(MAX_INPUT_BYTES + 1).read_to_end(&mut bytes).ok()?;
+    reader
+        .take(MAX_INPUT_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
     if bytes.len() as u64 > MAX_INPUT_BYTES {
         return None;
     }
@@ -164,7 +207,11 @@ fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
     if !events(harness).contains(&input.hook_event_name.as_str()) {
         return None;
     }
-    Some(Hint { harness, event: input.hook_event_name, sent_at_ms: now_ms()? })
+    Some(Hint {
+        harness,
+        event: input.hook_event_name,
+        sent_at_ms: now_ms()?,
+    })
 }
 
 pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
@@ -172,7 +219,13 @@ pub const SOCKET_ENV: &str = "SPONSOR_SHELL_HOOK_SOCKET";
 
 pub fn environment(harness: Option<Harness>, socket: Option<&Path>) -> Vec<String> {
     // Do not inherit an unrelated wrapper's bridge from a long-lived tmux server.
-    let mut args = vec!["env".into(), "-u".into(), HARNESS_ENV.into(), "-u".into(), SOCKET_ENV.into()];
+    let mut args = vec![
+        "env".into(),
+        "-u".into(),
+        HARNESS_ENV.into(),
+        "-u".into(),
+        SOCKET_ENV.into(),
+    ];
     if let (Some(harness), Some(socket)) = (harness, socket) {
         args.push(format!("{HARNESS_ENV}={}", harness.command()));
         args.push(format!("{SOCKET_ENV}={}", socket.to_string_lossy()));
@@ -181,8 +234,13 @@ pub fn environment(harness: Option<Harness>, socket: Option<&Path>) -> Vec<Strin
 }
 
 const COMMON_EVENTS: &[&str] = &[
-    "SessionStart", "UserPromptSubmit", "PreToolUse", "PermissionRequest",
-    "PostToolUse", "Stop", "SessionEnd",
+    "SessionStart",
+    "UserPromptSubmit",
+    "PreToolUse",
+    "PermissionRequest",
+    "PostToolUse",
+    "Stop",
+    "SessionEnd",
 ];
 
 pub fn events(harness: Harness) -> Vec<&'static str> {
@@ -267,6 +325,10 @@ mod tests {
             assert!(read_hint(Harness::Claude, input.as_bytes()).is_none());
         }
         assert!(read_hint(Harness::Claude, &vec![b' '; 65537][..]).is_none());
-        assert!(read_hint(Harness::Claude, br#"{"hook_event_name":"Interrupt"}"#.as_slice()).is_none());
+        assert!(read_hint(
+            Harness::Claude,
+            br#"{"hook_event_name":"Interrupt"}"#.as_slice()
+        )
+        .is_none());
     }
 }
