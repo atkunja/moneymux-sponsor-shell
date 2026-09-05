@@ -58,6 +58,35 @@ socket directory is removed on normal wrapper exit. A force-killed wrapper may
 leave an empty directory/socket inode in the operating system's temporary area;
 it contains no prompt, transcript or token data.
 
+## Optional Claude status line
+
+A second, separate placement: one sponsored row beneath Claude Code's own
+footer, showing an approved sponsor name as a clickable link.
+
+```sh
+./target/release/sponsor-shell claude-status-line-setup
+```
+
+That command **only prints**. Read what it says before pasting anything: Claude
+Code hides most built-in footer hints once any custom status line is configured,
+including `esc to interrupt`. Losing the documented way to stop a running model
+is a real cost, and it is your decision rather than this tool's.
+
+The status line receives far more session data than the hooks do — transcript
+path, working directory, repository owner and name, session id and name, prompt
+id, session cost, rate-limit consumption. `claude-status-line` drains that input
+so Claude Code never blocks writing it, then discards it without parsing. It
+makes no network request: updates are debounced at 300ms and an in-flight
+command is killed when a new one arrives, so a request there could not be
+retried and would delay your own status line.
+
+It renders nothing at all when there is no approved creative. It is **not** a
+billable impression — the command runs even while the status line is hidden by a
+prompt or menu, so running it proves nothing about visibility. Impressions
+remain with the sidecar, which can observe its own pane.
+
+Remove it by deleting the `statusLine` key you added. Nothing else is installed.
+
 ## What a label means
 
 `Claude | recent hook: permission requested` means exactly that an allowlisted
