@@ -41,6 +41,45 @@ fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
 
 const HINT_LEASE_MS: u64 = 10_000;
 
+/// What the harness is doing, derived from the hook events already arriving.
+///
+/// The recent-hook label answers "what happened last"; it expires in ten
+/// seconds because a stale event name is misleading. That makes it useless for
+/// the thing a sidecar actually needs to know — whether a model turn is still
+/// running — because a turn routinely lasts minutes with no intervening event.
+/// So the phase is tracked separately, with its own much longer ceiling.
+///
+/// This remains advisory. Hooks can be missing, delayed, reordered, duplicated,
+/// or emitted by a subagent sharing the wrapper environment. A phase is never
+/// visibility, attention, or billing evidence, and it never zooms the ad over
+/// the harness.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TurnPhase {
+    /// Hooks are not configured, or nothing has been observed recently enough
+    /// to describe. Reported honestly rather than guessed as idle.
+    Unknown,
+    /// No prompt is in flight: the session started, or the last turn ended.
+    Idle,
+    /// A prompt was submitted and no ending event has arrived. This is the
+    /// waiting state the user sees a spinner for.
+    Working,
+    /// The harness is blocked on a human — a permission prompt or a
+    /// notification. Deliberately distinct from `Working`: the model is not
+    /// computing, and describing it as working would be a lie the user can see.
+    AwaitingUser,
+}
+
+impl TurnPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "activity unavailable",
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::AwaitingUser => "waiting on you",
+        }
+    }
+}
+
 pub struct Activity {
     harness: Harness,
     socket: Option<UnixDatagram>,
