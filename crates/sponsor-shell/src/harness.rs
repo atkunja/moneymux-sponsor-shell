@@ -355,6 +355,65 @@ mod tests {
     }
 
     #[test]
+    fn hints_expire_at_the_boundary_and_reject_future_timestamps() {
+        let hint = Hint {
+            harness: Harness::Claude,
+            event: "PermissionRequest".into(),
+            sent_at_ms: 20_000,
+        };
+        assert!(!valid_hint(&hint, 19_999));
+        assert!(valid_hint(&hint, 20_000));
+        assert!(valid_hint(&hint, 29_999));
+        assert!(!valid_hint(&hint, 30_000));
+        let activity = Activity {
+            harness: Harness::Claude,
+            socket: None,
+            latest: Some(hint),
+        };
+        assert_eq!(
+            activity.label_at(20_000),
+            "Claude | recent hook: permission requested"
+        );
+        assert_eq!(activity.label_at(30_000), "Claude | activity unavailable");
+    }
+
+    #[test]
+    fn malformed_foreign_and_expired_datagrams_cannot_set_activity() {
+        let bridge = BridgeDirectory::create().unwrap();
+        let mut activity = Activity {
+            harness: Harness::Claude,
+            socket: Some(Activity::bind(&bridge.socket_path()).unwrap()),
+            latest: None,
+        };
+        let socket = UnixDatagram::unbound().unwrap();
+        socket.connect(bridge.socket_path()).unwrap();
+        for bytes in [
+            "not json",
+            r#"{"harness":"claude","event":"Stop","sent_at_ms":0,"prompt":"private"}"#,
+        ] {
+            socket.send(bytes.as_bytes()).unwrap();
+        }
+        for (harness, event, sent_at_ms) in [
+            (Harness::Codex, "Stop", now_ms().unwrap()),
+            (Harness::Claude, "Stop", 0),
+            (Harness::Claude, "Stop", u64::MAX),
+            (Harness::Claude, "\u{1b}[2J", now_ms().unwrap()),
+        ] {
+            send_hint(
+                &bridge.socket_path(),
+                &Hint {
+                    harness,
+                    event: event.into(),
+                    sent_at_ms,
+                },
+            )
+            .unwrap();
+        }
+        activity.poll();
+        assert_eq!(activity.label(), "Claude | activity unavailable");
+    }
+
+    #[test]
     fn only_explicit_supported_harness_names_are_accepted() {
         assert_eq!(Harness::parse("claude"), Some(Harness::Claude));
         assert_eq!(Harness::parse("codex"), Some(Harness::Codex));
