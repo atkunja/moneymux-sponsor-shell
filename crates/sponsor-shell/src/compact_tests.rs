@@ -7,11 +7,23 @@ fn visibility_restarts_after_hidden_or_changed_geometry() {
     let mut previous = None;
     assert!(visibility_geometry_changed(&mut previous, &creative, full));
     assert!(!visibility_geometry_changed(&mut previous, &creative, full));
-    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(80, 6)));
+    assert!(visibility_geometry_changed(
+        &mut previous,
+        &creative,
+        Layout::new(80, 6)
+    ));
     assert!(previous.is_none());
     assert!(visibility_geometry_changed(&mut previous, &creative, full));
-    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(81, 24)));
-    assert!(visibility_geometry_changed(&mut previous, &creative, Layout::new(81, 25)));
+    assert!(visibility_geometry_changed(
+        &mut previous,
+        &creative,
+        Layout::new(81, 24)
+    ));
+    assert!(visibility_geometry_changed(
+        &mut previous,
+        &creative,
+        Layout::new(81, 25)
+    ));
 }
 
 #[test]

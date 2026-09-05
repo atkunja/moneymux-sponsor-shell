@@ -2468,7 +2468,11 @@ fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
             .all(|line| line.chars().count() <= inner_width)
 }
 
-fn visibility_geometry_changed(previous: &mut Option<(u16, u16)>, creative: &AdCreative, layout: Layout) -> bool {
+fn visibility_geometry_changed(
+    previous: &mut Option<(u16, u16)>,
+    creative: &AdCreative,
+    layout: Layout,
+) -> bool {
     let next = full_creative_fits(creative, layout).then_some((layout.cols, layout.rows));
     let restart = next.is_none() || next != *previous;
     *previous = next;
