@@ -114,6 +114,10 @@ exit 37
                 return tmux("capture-pane", "-p", "-t", f"{session}:0.{pane}", required=False)
 
             wait_for(lambda: "recent hook: permission requested" in capture(0))
+            preview = capture(0)
+            assert "Sponsored preview: RAILWAY" in preview, preview
+            assert "https://railway.app" in preview, preview
+            assert "[Sponsored terminal time]" in preview, preview
             app = capture(1)
             assert "PERMISSION_PROMPT_VISIBLE" in app, app
             assert "<a b><literal;$(no-exec)'>" in app, app
@@ -129,6 +133,9 @@ exit 37
             wait_for(lambda: tmux("display-message", "-p", "-t", session, "#{window_width}") == "48")
             assert "PERMISSION_PROMPT_VISIBLE" in capture(1)
             assert tmux("display-message", "-p", "-t", session, "#{window_zoomed_flag}") == "0"
+            # Four ad rows cannot hold all preview essentials: no cropped sponsor.
+            wait_for(lambda: "Sponsor hidden:" in capture(0))
+            assert "railway.app" not in capture(0)
             if interrupt:
                 # Clicking the ad pane must not strand Ctrl-C away from the app.
                 tmux("select-pane", "-t", f"{session}:0.0")
