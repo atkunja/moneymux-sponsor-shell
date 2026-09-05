@@ -3272,6 +3272,73 @@ mod tests {
         ));
     }
 
+    // A click is worth twenty-five times an impression at the reserve price. It
+    // used to be sent once with the result discarded, so a momentary failure
+    // dropped the most valuable event on the page in silence.
+    #[test]
+    fn a_click_is_queued_for_retry_like_an_impression() {
+        let mut pending = Vec::new();
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/offer");
+
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].path, CLICK_EVENT_PATH);
+        let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
+        assert_eq!(body["adDecisionId"], "decision-1");
+        // The retry is only safe because the server deduplicates on this key,
+        // so it must be both present and the key the queue retries under.
+        assert_eq!(body["clientEventId"], pending[0].key.as_str());
+    }
+
+    #[test]
+    fn a_click_without_a_decision_is_not_queued() {
+        let mut pending = Vec::new();
+        queue_click_report(&mut pending, &inactive_creative(), "https://example.test/");
+        assert!(pending.is_empty());
+    }
+
+    // Two clicks on the same ad are two separate billable events, so they must
+    // not deduplicate against each other in the queue.
+    #[test]
+    fn two_clicks_on_one_decision_keep_distinct_keys() {
+        let mut pending = Vec::new();
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/a");
+        queue_click_report(&mut pending, &creative, "https://example.test/b");
+        assert_eq!(pending.len(), 2);
+        assert_ne!(pending[0].key, pending[1].key);
+    }
+
+    // A queued click must never stand in for the impression on the same
+    // decision; they are separate charges.
+    #[test]
+    fn a_queued_click_does_not_suppress_its_impression() {
+        let mut pending = Vec::new();
+        let mut sequence = 0;
+        let creative = AdCreative {
+            ad_decision_id: Some("decision-1".into()),
+            ..inactive_creative()
+        };
+        queue_click_report(&mut pending, &creative, "https://example.test/");
+        assert!(enqueue_impression_if_needed(
+            &creative,
+            &HashSet::new(),
+            &HashSet::new(),
+            &mut pending,
+            Layout::new(80, 24),
+            &mut sequence,
+            1_000,
+        ));
+        assert_eq!(pending.len(), 2);
+        assert!(pending.iter().any(|r| r.path == IMPRESSION_EVENT_PATH));
+    }
+
     #[test]
     fn impression_retry_backoff_is_exponential_and_capped() {
         assert_eq!(impression_retry_delay(0), Duration::from_secs(1));
