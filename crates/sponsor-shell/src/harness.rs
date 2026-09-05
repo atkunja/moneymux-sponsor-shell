@@ -423,6 +423,44 @@ mod tests {
     }
 
     #[test]
+    fn generated_hooks_quote_the_binary_and_never_emit_policy_overrides() {
+        for harness in [Harness::Claude, Harness::Codex] {
+            let config = hook_configuration(harness, "/tmp/a b/'quoted'/sponsor-shell");
+            assert_eq!(config.as_object().unwrap().len(), 1);
+            let hooks = config["hooks"].as_object().unwrap();
+            assert_eq!(hooks.len(), events(harness).len());
+            for (event, groups) in hooks {
+                assert!(events(harness).contains(&event.as_str()));
+                assert!(event_label(event).is_some());
+                let handler = &groups[0]["hooks"][0];
+                assert_eq!(handler.as_object().unwrap().len(), 3);
+                assert_eq!(handler["type"], "command");
+                assert_eq!(handler["timeout"], 1);
+                assert_eq!(
+                    handler["command"],
+                    format!(
+                        "'/tmp/a b/'\\''quoted'\\''/sponsor-shell' harness-event {}",
+                        harness.command()
+                    )
+                );
+            }
+            assert!(!config.to_string().contains("async"));
+            assert!(!config.to_string().contains("permissionDecision"));
+        }
+    }
+
+    #[test]
+    fn environment_clears_inherited_channels_before_optional_session_binding() {
+        let cleared = vec!["env", "-u", HARNESS_ENV, "-u", SOCKET_ENV];
+        assert_eq!(environment(None, None), cleared);
+        assert_eq!(environment(Some(Harness::Codex), None), cleared);
+        let configured = environment(Some(Harness::Claude), Some(Path::new("/tmp/a b/events")));
+        assert_eq!(configured[..5], cleared);
+        assert_eq!(configured[5], format!("{HARNESS_ENV}=claude"));
+        assert_eq!(configured[6], format!("{SOCKET_ENV}=/tmp/a b/events"));
+    }
+
+    #[test]
     fn hooks_discard_sensitive_fields_and_reject_unknown_events() {
         let input = br#"{"hook_event_name":"UserPromptSubmit","prompt":"secret","cwd":"/private","tool_input":{"password":"private"},"transcript_path":"/secret"}"#;
         let hint = read_hint(Harness::Claude, &input[..]).unwrap();
