@@ -169,9 +169,24 @@ impl Activity {
             .as_ref()
             .filter(|hint| valid_hint(hint, now))
             .and_then(|hint| event_label(&hint.event));
-        match recent {
-            Some(label) => format!("{} | recent hook: {label}", self.harness.label()),
-            None => format!("{} | activity unavailable", self.harness.label()),
+        // The phase leads because it is what the user is actually looking for:
+        // whether the thing they are waiting on is still running. The recent
+        // hook stays alongside it as the evidence the phase was derived from,
+        // so a wrong phase is auditable rather than merely disbelieved.
+        let phase = self.phase_at(now);
+        match (phase, recent) {
+            (TurnPhase::Unknown, None) => {
+                format!("{} | activity unavailable", self.harness.label())
+            }
+            (TurnPhase::Unknown, Some(label)) => {
+                format!("{} | recent hook: {label}", self.harness.label())
+            }
+            (phase, None) => format!("{} | {}", self.harness.label(), phase.label()),
+            (phase, Some(label)) => format!(
+                "{} | {} | recent hook: {label}",
+                self.harness.label(),
+                phase.label()
+            ),
         }
     }
 }
@@ -447,7 +462,12 @@ mod tests {
         send_hint(&first.socket_path(), &hint).unwrap();
         activity.poll();
         other.poll();
-        assert_eq!(activity.label(), "Codex | recent hook: turn interrupted");
+        // The interrupt ends the turn, so the phase leads and the hook that
+        // established it stays visible as the evidence.
+        assert_eq!(
+            activity.label(),
+            "Codex | idle | recent hook: turn interrupted"
+        );
         assert_eq!(other.label(), "Codex | activity unavailable");
         assert!(send_hint(&first.path.join("absent"), &hint).is_err());
     }
