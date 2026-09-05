@@ -170,12 +170,15 @@ links. Its existing signed decision, interactivity, duration and click rules
 remain the only client-side ad-event inputs. A hook never requests an ad, reports
 an impression/click, changes billing eligibility or earns publisher money.
 
-Hooks add no placement of any kind. The separate opt-in Claude status line above
-is a rendered placement, but not a billable one: it draws only an already
-approved creative, reports nothing, and cannot observe its own visibility. No
-native-loading placement exists on either harness. Any paid status-line or
-loading placement needs its own server contract and visibility qualification
-before it can be billed, which is why the status line stays unbilled today.
+Hooks add no placement of any kind. Two opt-in placements above do render — the
+sponsored spinner tip and the Claude status line — and neither is billable. Both
+draw an already approved creative, report nothing, and cannot observe their own
+visibility; Claude Code renders the tip rotation itself and hides the status line
+behind prompts and menus, so in both cases running the command proves nothing
+about what a user saw. Any paid spinner, status-line or loading placement needs
+its own server contract and visibility qualification before it can be billed,
+which is why both stay unbilled and why impressions remain with the sidecar,
+which can observe its own pane.
 
 ## Evidence and limitations
 
