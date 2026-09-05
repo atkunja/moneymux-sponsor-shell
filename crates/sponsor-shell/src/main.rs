@@ -1494,6 +1494,10 @@ fn run_sponsor_pane() -> Result<()> {
                 }
                 event::Event::Resize(_, _) => {
                     let layout = Layout::current();
+                    // A new viewport starts a new uninterrupted visibility interval.
+                    creative_visible_since = Instant::now();
+                    hovered_ad_cell = None;
+                    hovered_link = None;
                     render_fullscreen_ad(
                         &mut stdout,
                         layout,
@@ -1560,6 +1564,7 @@ fn run_sponsor_pane() -> Result<()> {
                         && tmux.expand_sponsor_pane().is_ok()
                     {
                         fullscreen = true;
+                        creative_visible_since = Instant::now();
                         hovered_ad_cell = None;
                         hovered_link = None;
                         render_fullscreen_ad(
@@ -1586,6 +1591,7 @@ fn run_sponsor_pane() -> Result<()> {
                 &impression_result_tx,
             );
             if creative_visible_since.elapsed() >= MIN_RENDERED_VISIBLE_DURATION
+                && full_creative_fits(&creative, layout)
                 && enqueue_impression_if_needed(
                     &creative,
                     &reported_ad_decision_ids,
