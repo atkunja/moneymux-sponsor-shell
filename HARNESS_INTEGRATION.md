@@ -114,3 +114,21 @@ loads vendor account credentials and does not alter your existing tmux sessions.
 This fixture test is not proof of hook delivery from a real Claude/Codex model
 turn. Live vendor hook acceptance and a signed public release remain separate
 release gates.
+
+### Local verification record — 2026-09-04
+
+- Rust 1.96.1 on macOS arm64: formatting, strict Clippy, 53 unit tests and three
+  compiled-CLI integration tests passed; optimized release build passed.
+- Three npm-launcher tests and release-metadata consistency passed.
+- Dependency policy passed, with the existing non-blocking duplicate `syn`
+  dependency warning. No dependencies or lockfile changed in this work.
+- Synthetic Claude and Codex PTYs each preserved exit 37, literal metacharacter
+  arguments, stale-server socket isolation, private-input suppression, visible
+  permission prompts at 100x36 and 48x18, and no zoom beyond the ten-second lease.
+  A third Codex fixture forwarded Ctrl-C from the selected ad pane and preserved
+  exit 130. All three runs cleaned their private hook directories.
+- Installed vendor binaries reported `codex-cli 0.144.1` and Claude Code
+  `2.1.191`; this records discovery only, not real provider hook acceptance.
+- The public repository still requires its normal code-owner review and hosted
+  checks. This record is local evidence, not a claim that a PR is merged or that
+  a new npm release is available. No staging/production flags were changed.
