@@ -34,6 +34,13 @@ sponsor-shell claude
 sponsor-shell bash
 ```
 
+Claude Code can also show a disclosed, non-billable campaign in its native
+loading-tip rotation. Print the settings fragment with:
+
+```sh
+sponsor-shell claude-spinner-setup
+```
+
 ## Supported platforms
 
 - macOS arm64 and x64
