@@ -60,10 +60,23 @@ it contains no prompt, transcript or token data.
 
 ## What a label means
 
-`Claude | recent hook: permission requested` means exactly that an allowlisted
-hook arrived recently. Labels expire after ten seconds. They are **not** proof
-of current model state, a loading/streaming distinction, visibility, attention,
-or a billable impression. Hooks may be missing, delayed, reordered, duplicated,
+`Claude | working | recent hook: prompt submitted` has two parts. The phase
+(`working`, `waiting on you`, `idle`, or `activity unavailable`) is derived from
+the sequence of allowlisted hooks; the recent hook names the single event it was
+derived from and expires after ten seconds.
+
+The phase is tracked separately because a turn routinely runs for minutes with
+no hook in between, so a ten-second label cannot describe one. It expires after
+fifteen minutes without any event, so a harness killed mid-turn decays to
+`activity unavailable` rather than claiming work forever.
+
+`waiting on you` is deliberately distinct from `working`: while a permission
+prompt is open the model is not computing, and the user can see that on their
+own screen.
+
+None of this is proof of model state, a loading/streaming distinction,
+visibility, attention, or a billable impression. A phase is a best-effort
+reading of an advisory event stream. Hooks may be missing, delayed, reordered, duplicated,
 or inherited by subagents. A subagent sharing the wrapper environment can update
 the same advisory label. No per-turn correctness is claimed.
 
