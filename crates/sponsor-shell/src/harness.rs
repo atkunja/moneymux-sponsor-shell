@@ -137,9 +137,26 @@ impl Activity {
                     .as_ref()
                     .is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
             {
+                if let Some(phase) = event_phase(&hint.event) {
+                    self.phase = Some((phase, hint.sent_at_ms));
+                } else if let Some((current, _)) = self.phase {
+                    // Proves the turn is still alive without deciding its
+                    // phase, so refresh the lease and keep the current state.
+                    self.phase = Some((current, hint.sent_at_ms));
+                }
                 self.latest = Some(hint);
             }
         }
+    }
+
+    pub fn phase(&self) -> TurnPhase {
+        self.phase_at(now_ms().unwrap_or(0))
+    }
+
+    fn phase_at(&self, now: u64) -> TurnPhase {
+        self.phase
+            .filter(|(_, at)| now.checked_sub(*at).is_some_and(|age| age < TURN_LEASE_MS))
+            .map_or(TurnPhase::Unknown, |(phase, _)| phase)
     }
 
     pub fn label(&self) -> String {
