@@ -894,6 +894,38 @@ fn default_ad_creative() -> AdCreative {
     railway_example_creative()
 }
 
+/// One sponsored status-line row for Claude Code, or nothing.
+///
+/// Claude Code renders whatever this prints beneath its own footer, so the
+/// output is deliberately a single short row: a disclosure, the sponsor, and an
+/// OSC 8 link. Returning `None` prints nothing at all, which is the correct
+/// state whenever there is no approved creative — an empty advertisement is
+/// better than a placeholder occupying the user's screen forever.
+///
+/// This is not a billable impression and never reports one. The status line can
+/// be hidden by prompts and menus while the command still runs, so invocation
+/// proves nothing about visibility. Impressions stay with the sidecar, which can
+/// observe its own pane.
+fn claude_status_line(creative: &AdCreative) -> Option<String> {
+    // The disabled placeholder is a local editor prompt, not inventory.
+    if creative.id == "local-disabled" {
+        return None;
+    }
+    let sponsor = sanitize_terminal_text(&creative.sponsor);
+    let sponsor = sponsor.trim();
+    if sponsor.is_empty() {
+        return None;
+    }
+    let url = canonical_https_url(&creative.url);
+    // Bounded so a long sponsor name cannot push the row past a narrow
+    // terminal, and so nothing here can be used to smuggle a payload.
+    let sponsor = truncate_chars(sponsor, 40);
+    Some(format!(
+        "Sponsored: {}",
+        terminal_hyperlink(&sponsor, &url, false)
+    ))
+}
+
 fn ad_file_path() -> PathBuf {
     env::var(SPONSOR_AD_FILE_ENV)
         .map(PathBuf::from)
