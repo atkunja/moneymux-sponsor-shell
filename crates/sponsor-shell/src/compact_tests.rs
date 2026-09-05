@@ -1,6 +1,22 @@
 use super::*;
 
 #[test]
+fn cramped_preview_is_hidden_instead_of_cropping_a_link() {
+    let creative = default_ad_creative();
+    for (cols, rows) in [(80, 4), (12, 10), (48, 3)] {
+        let lines = ad_lines(&creative, cols, rows, 0);
+        assert!(lines.len() <= usize::from(rows));
+        assert!(!lines.join("\n").contains(&creative.url));
+        assert!(!lines.join("\n").contains(&creative.sponsor));
+        for row in 0..rows {
+            for col in 0..cols {
+                assert_eq!(link_at_cell(&creative, Layout::new(cols, rows), 0, row, col), None);
+            }
+        }
+    }
+}
+
+#[test]
 fn preview_preserves_only_complete_logo_variants() {
     let mut creative = default_ad_creative();
     creative.logos.small = vec!["[LOGO]".into(), "[BASE]".into()];
