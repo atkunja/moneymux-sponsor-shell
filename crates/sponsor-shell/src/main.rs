@@ -327,6 +327,13 @@ fn run() -> Result<i32> {
     }
     if args
         .first()
+        .is_some_and(|arg| arg == "claude-spinner-setup")
+    {
+        print!("{}", claude_spinner_setup(load_ad_creative().as_ref()));
+        return Ok(0);
+    }
+    if args
+        .first()
         .is_some_and(|arg| arg == "claude-status-line-setup")
     {
         let executable = env::current_exe().context("failed to locate sponsor-shell")?;
@@ -965,6 +972,48 @@ fn claude_status_line_setup(executable: &str) -> String {
          \n\
          To remove it, delete that `statusLine` key. Nothing else is installed\n\
          and no background process is left running.\n",
+        serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
+    )
+}
+
+/// Print-only setup guidance for the sponsored spinner tip.
+///
+/// Prints the limits before the configuration, like the status-line setup. The
+/// honest ones here are that this placement earns nothing and cannot be
+/// measured, and that the creative is fixed at install time.
+fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
+    let Some(tip) = creative.and_then(claude_spinner_tip) else {
+        return "No approved creative is available locally, so there is no sponsored tip to \
+                install yet.\nRun the sidecar once to fetch one, then re-run this command.\n"
+            .to_string();
+    };
+    let settings = serde_json::json!({
+        "spinnerTipsOverride": {
+            // Claude Code renders "<label>: <text>", so the disclosure travels
+            // with the line and cannot be separated from it.
+            "label": "Sponsored",
+            "tips": [tip],
+        },
+    });
+    format!(
+        "Before you install this, know what it does:\n\
+         \n\
+         - It adds one sponsored line to the tip rotation Claude Code shows\n\
+         \x20 while a turn runs. It does not replace the spinner verb, which\n\
+         \x20 describes what Claude is doing; an advertisement there would be\n\
+         \x20 pretending to be the model's own status.\n\
+         - It earns nothing. Claude Code renders the rotation itself and\n\
+         \x20 reports nothing back, so there is no impression, no click and no\n\
+         \x20 visibility signal. Earnings come from the sidecar.\n\
+         - `excludeDefault` is deliberately absent, so Claude Code's own tips\n\
+         \x20 keep showing alongside this one.\n\
+         - The creative is fixed at install. Re-run this command to refresh it.\n\
+         \n\
+         Merge into the `spinnerTipsOverride` key of your Claude settings:\n\
+         \n\
+         {}\n\
+         \n\
+         To remove it, delete that `spinnerTipsOverride` key.\n",
         serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
     )
 }
