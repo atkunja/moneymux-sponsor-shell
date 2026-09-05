@@ -3888,6 +3888,7 @@ mod tests {
         let setup = claude_spinner_setup(None);
         assert!(setup.contains("No approved creative"), "{setup}");
         assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
+        assert!(!setup.contains("Run the sidecar"), "{setup}");
     }
 
     #[test]
