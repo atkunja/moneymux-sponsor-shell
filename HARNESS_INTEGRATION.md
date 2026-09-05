@@ -78,7 +78,8 @@ disclosure is part of the line.
 ```
 
 Print-only. It emits the JSON to merge into your own settings and never writes a
-file.
+file. A linked terminal asks MoneyMux for current eligible inventory when the
+command runs; an unlinked terminal can still use an injected local creative.
 
 Two deliberate refusals. It does **not** use `spinnerVerbs`: that slot says what
 Claude is doing — "Accomplishing", "Baking" — so a sponsor there dresses an
