@@ -178,9 +178,15 @@ the outer `CI=1` verdict kept billing interactivity disabled.
 Installed Codex CLI 0.144.1 also completed a real synthetic no-tools response
 under read-only/untrusted approval settings. Its six-row sidecar retained the
 preview, and resizing to 48x18 hid the ad without taking over the harness.
-This Codex run did not install or trust hooks, so it proves the no-hook fallback,
-not Codex hook delivery. No hook-trust bypass flags were used. The observed
-rate-limit prompt was not accepted as a model-change request.
+The initial Codex run did not install or trust hooks, so it proves the no-hook
+fallback. A follow-up loaded a temporary project `hooks.json`, checked for exact
+equality with generated configuration, then reviewed its local command/source
+and trusted it through the normal `/hooks` UI. The installed version recognized
+six of the eight configured events; its actual `Stop` label appeared beside a
+second exact synthetic response. This establishes real Codex stop-hook delivery,
+not acceptance of unsupported or unobserved events. No hook-trust bypass flags
+were used. The observed rate-limit prompt was dismissed without changing models.
+The temporary project hook file was removed after the test.
 
 The first Claude run exposed the cropped-logo bug fixed here. It also presented
 an unexpected onboarding dialog; an Enter intended for the test selected global
@@ -192,6 +198,6 @@ Local checks: 60 Rust unit tests, three compiled-CLI tests, all four synthetic
 PTY cases, three npm tests, release-metadata checking, formatting, strict Clippy,
 optimized build and dependency policy passed (existing duplicate `syn` warning).
 The PTY suite now asserts disclosed previews at normal size and no cropped
-destination after shrinking. Real permission/tool/streaming scenarios, Codex
-hook trust/delivery, full waiting-state placement, paid compact-placement
+destination after shrinking. Real permission/tool/streaming scenarios, complete
+vendor-event coverage, full waiting-state placement, paid compact-placement
 acceptance and a signed release remain unproven.
