@@ -431,11 +431,13 @@ mod tests {
             harness: Harness::Codex,
             socket: Some(Activity::bind(&first.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let mut other = Activity {
             harness: Harness::Codex,
             socket: Some(Activity::bind(&second.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let hint = read_hint(
             Harness::Codex,
@@ -465,6 +467,7 @@ mod tests {
             harness: Harness::Claude,
             socket: None,
             latest: Some(hint),
+            phase: None,
         };
         assert_eq!(
             activity.label_at(20_000),
@@ -480,6 +483,7 @@ mod tests {
             harness: Harness::Claude,
             socket: Some(Activity::bind(&bridge.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let socket = UnixDatagram::unbound().unwrap();
         socket.connect(bridge.socket_path()).unwrap();
