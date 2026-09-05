@@ -40,11 +40,59 @@ fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
 }
 
 const HINT_LEASE_MS: u64 = 10_000;
+/// How long a phase may be trusted without any new event.
+///
+/// A turn can legitimately run for minutes with no hook in between, so this is
+/// far longer than the label lease. It still expires: a harness that was killed
+/// mid-turn must decay to `Unknown` rather than claim work forever.
+const TURN_LEASE_MS: u64 = 15 * 60 * 1_000;
+
+/// What the harness is doing, derived from the hook events already arriving.
+///
+/// The recent-hook label answers "what happened last"; it expires in ten
+/// seconds because a stale event name is misleading. That makes it useless for
+/// the thing a sidecar actually needs to know — whether a model turn is still
+/// running — because a turn routinely lasts minutes with no intervening event.
+/// So the phase is tracked separately, with its own much longer ceiling.
+///
+/// This remains advisory. Hooks can be missing, delayed, reordered, duplicated,
+/// or emitted by a subagent sharing the wrapper environment. A phase is never
+/// visibility, attention, or billing evidence, and it never zooms the ad over
+/// the harness.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TurnPhase {
+    /// Hooks are not configured, or nothing has been observed recently enough
+    /// to describe. Reported honestly rather than guessed as idle.
+    Unknown,
+    /// No prompt is in flight: the session started, or the last turn ended.
+    Idle,
+    /// A prompt was submitted and no ending event has arrived. This is the
+    /// waiting state the user sees a spinner for.
+    Working,
+    /// The harness is blocked on a human — a permission prompt or a
+    /// notification. Deliberately distinct from `Working`: the model is not
+    /// computing, and describing it as working would be a lie the user can see.
+    AwaitingUser,
+}
+
+impl TurnPhase {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "activity unavailable",
+            Self::Idle => "idle",
+            Self::Working => "working",
+            Self::AwaitingUser => "waiting on you",
+        }
+    }
+}
 
 pub struct Activity {
     harness: Harness,
     socket: Option<UnixDatagram>,
     latest: Option<Hint>,
+    /// Held separately from `latest` so a long turn is not forgotten the moment
+    /// its opening event stops being recent enough to name.
+    phase: Option<(TurnPhase, u64)>,
 }
 
 impl Activity {
@@ -56,6 +104,7 @@ impl Activity {
             harness,
             socket,
             latest: None,
+            phase: None,
         })
     }
 
@@ -69,6 +118,7 @@ impl Activity {
         let Some(socket) = &self.socket else { return };
         let Some(now) = now_ms() else {
             self.latest = None;
+            self.phase = None;
             return;
         };
         // Bound every frame's work even if a local process floods the socket.
@@ -87,9 +137,22 @@ impl Activity {
                     .as_ref()
                     .is_none_or(|last| hint.sent_at_ms >= last.sent_at_ms)
             {
+                if let Some(phase) = event_phase(&hint.event) {
+                    self.phase = Some((phase, hint.sent_at_ms));
+                } else if let Some((current, _)) = self.phase {
+                    // Proves the turn is still alive without deciding its
+                    // phase, so refresh the lease and keep the current state.
+                    self.phase = Some((current, hint.sent_at_ms));
+                }
                 self.latest = Some(hint);
             }
         }
+    }
+
+    fn phase_at(&self, now: u64) -> TurnPhase {
+        self.phase
+            .filter(|(_, at)| now.checked_sub(*at).is_some_and(|age| age < TURN_LEASE_MS))
+            .map_or(TurnPhase::Unknown, |(phase, _)| phase)
     }
 
     pub fn label(&self) -> String {
@@ -102,9 +165,24 @@ impl Activity {
             .as_ref()
             .filter(|hint| valid_hint(hint, now))
             .and_then(|hint| event_label(&hint.event));
-        match recent {
-            Some(label) => format!("{} | recent hook: {label}", self.harness.label()),
-            None => format!("{} | activity unavailable", self.harness.label()),
+        // The phase leads because it is what the user is actually looking for:
+        // whether the thing they are waiting on is still running. The recent
+        // hook stays alongside it as the evidence the phase was derived from,
+        // so a wrong phase is auditable rather than merely disbelieved.
+        let phase = self.phase_at(now);
+        match (phase, recent) {
+            (TurnPhase::Unknown, None) => {
+                format!("{} | activity unavailable", self.harness.label())
+            }
+            (TurnPhase::Unknown, Some(label)) => {
+                format!("{} | recent hook: {label}", self.harness.label())
+            }
+            (phase, None) => format!("{} | {}", self.harness.label(), phase.label()),
+            (phase, Some(label)) => format!(
+                "{} | {} | recent hook: {label}",
+                self.harness.label(),
+                phase.label()
+            ),
         }
     }
 }
@@ -262,6 +340,25 @@ pub fn events(harness: Harness) -> Vec<&'static str> {
     names
 }
 
+/// Map an event to the phase it establishes, or `None` to leave the phase alone.
+///
+/// Returning `None` matters: `PreToolUse`/`PostToolUse` prove a turn is still
+/// alive without themselves deciding the phase, so they must refresh the lease
+/// without overwriting an `AwaitingUser` the permission prompt just set.
+fn event_phase(name: &str) -> Option<TurnPhase> {
+    Some(match name {
+        "UserPromptSubmit" => TurnPhase::Working,
+        "PermissionRequest" | "Notification" => TurnPhase::AwaitingUser,
+        // A tool starting or finishing is the model acting, so it ends any
+        // wait it was blocked on and resumes work.
+        "PostToolUse" | "PostToolUseFailure" => TurnPhase::Working,
+        "Stop" | "Interrupt" | "SessionEnd" | "SessionStart" => TurnPhase::Idle,
+        // PreToolUse is deliberately absent: it fires while a permission prompt
+        // may still be pending, and would otherwise erase AwaitingUser.
+        _ => return None,
+    })
+}
+
 fn event_label(name: &str) -> Option<&'static str> {
     Some(match name {
         "SessionStart" => "session started",
@@ -345,11 +442,13 @@ mod tests {
             harness: Harness::Codex,
             socket: Some(Activity::bind(&first.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let mut other = Activity {
             harness: Harness::Codex,
             socket: Some(Activity::bind(&second.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let hint = read_hint(
             Harness::Codex,
@@ -359,9 +458,180 @@ mod tests {
         send_hint(&first.socket_path(), &hint).unwrap();
         activity.poll();
         other.poll();
-        assert_eq!(activity.label(), "Codex | recent hook: turn interrupted");
+        // The interrupt ends the turn, so the phase leads and the hook that
+        // established it stays visible as the evidence.
+        assert_eq!(
+            activity.label(),
+            "Codex | idle | recent hook: turn interrupted"
+        );
         assert_eq!(other.label(), "Codex | activity unavailable");
         assert!(send_hint(&first.path.join("absent"), &hint).is_err());
+    }
+
+    fn phased(events: &[(&str, u64)]) -> Activity {
+        let mut activity = Activity {
+            harness: Harness::Claude,
+            socket: None,
+            latest: None,
+            phase: None,
+        };
+        for (event, at) in events {
+            if let Some(phase) = event_phase(event) {
+                activity.phase = Some((phase, *at));
+            } else if let Some((current, _)) = activity.phase {
+                activity.phase = Some((current, *at));
+            }
+        }
+        activity
+    }
+
+    #[test]
+    fn a_submitted_prompt_starts_a_working_turn() {
+        assert_eq!(
+            phased(&[("UserPromptSubmit", 1_000)]).phase_at(1_000),
+            TurnPhase::Working
+        );
+    }
+
+    #[test]
+    fn stopping_interrupting_or_ending_returns_to_idle() {
+        for ending in ["Stop", "Interrupt", "SessionEnd"] {
+            let activity = phased(&[("UserPromptSubmit", 1_000), (ending, 2_000)]);
+            assert_eq!(activity.phase_at(2_000), TurnPhase::Idle, "{ending}");
+        }
+    }
+
+    // The model is not computing while a human is being asked something, and
+    // the user can see that on their own screen.
+    #[test]
+    fn a_permission_prompt_is_not_reported_as_working() {
+        let activity = phased(&[("UserPromptSubmit", 1_000), ("PermissionRequest", 2_000)]);
+        assert_eq!(activity.phase_at(2_000), TurnPhase::AwaitingUser);
+    }
+
+    // PreToolUse fires while the permission prompt may still be pending, so it
+    // must not silently revert the wait to working.
+    #[test]
+    fn a_tool_request_does_not_erase_a_pending_permission_prompt() {
+        let activity = phased(&[
+            ("UserPromptSubmit", 1_000),
+            ("PermissionRequest", 2_000),
+            ("PreToolUse", 3_000),
+        ]);
+        assert_eq!(activity.phase_at(3_000), TurnPhase::AwaitingUser);
+    }
+
+    // ...but the tool actually running means the human answered.
+    #[test]
+    fn a_finished_tool_resumes_working_after_a_permission_prompt() {
+        let activity = phased(&[
+            ("UserPromptSubmit", 1_000),
+            ("PermissionRequest", 2_000),
+            ("PostToolUse", 3_000),
+        ]);
+        assert_eq!(activity.phase_at(3_000), TurnPhase::Working);
+    }
+
+    // A turn that outlives the ten-second label lease must still read as
+    // working; that gap is the whole reason the phase is tracked separately.
+    #[test]
+    fn a_long_turn_outlives_the_recent_hook_label() {
+        let activity = phased(&[("UserPromptSubmit", 1_000)]);
+        assert_eq!(
+            activity.phase_at(1_000 + HINT_LEASE_MS * 10),
+            TurnPhase::Working
+        );
+    }
+
+    // But a harness killed mid-turn must decay rather than claim work forever.
+    #[test]
+    fn a_stalled_turn_expires_into_unknown_at_the_boundary() {
+        let activity = phased(&[("UserPromptSubmit", 1_000)]);
+        assert_eq!(
+            activity.phase_at(1_000 + TURN_LEASE_MS - 1),
+            TurnPhase::Working
+        );
+        assert_eq!(activity.phase_at(1_000 + TURN_LEASE_MS), TurnPhase::Unknown);
+    }
+
+    #[test]
+    fn no_observed_event_is_unknown_rather_than_guessed_idle() {
+        let activity = phased(&[]);
+        assert_eq!(activity.phase_at(1_000), TurnPhase::Unknown);
+    }
+
+    // A clock that disagrees must not resurrect an expired phase.
+    #[test]
+    fn a_backwards_clock_does_not_extend_a_phase() {
+        let activity = phased(&[("UserPromptSubmit", 10_000)]);
+        assert_eq!(activity.phase_at(9_999), TurnPhase::Unknown);
+    }
+
+    #[test]
+    fn an_unrecognised_event_leaves_the_phase_alone() {
+        let activity = phased(&[("UserPromptSubmit", 1_000), ("SomethingElse", 2_000)]);
+        assert_eq!(activity.phase_at(2_000), TurnPhase::Working);
+        assert_eq!(event_phase("SomethingElse"), None);
+    }
+
+    #[test]
+    fn every_phase_has_a_distinct_human_label() {
+        let labels = [
+            TurnPhase::Unknown.label(),
+            TurnPhase::Idle.label(),
+            TurnPhase::Working.label(),
+            TurnPhase::AwaitingUser.label(),
+        ];
+        let mut unique = labels.to_vec();
+        unique.sort_unstable();
+        unique.dedup();
+        assert_eq!(unique.len(), labels.len());
+    }
+
+    // Against a real clock rather than only injected constants, so a unit
+    // mismatch in the lease would show up here.
+    #[test]
+    fn the_phase_holds_and_expires_against_a_real_clock() {
+        let now = now_ms().unwrap();
+        assert_eq!(
+            phased(&[("UserPromptSubmit", now)]).phase_at(now),
+            TurnPhase::Working
+        );
+        let expired = phased(&[("UserPromptSubmit", now - TURN_LEASE_MS)]);
+        assert_eq!(expired.phase_at(now), TurnPhase::Unknown);
+    }
+
+    #[test]
+    fn the_footer_shows_the_phase_with_the_hook_that_established_it() {
+        let mut activity = phased(&[("UserPromptSubmit", 1_000)]);
+        activity.latest = Some(Hint {
+            harness: Harness::Claude,
+            event: "UserPromptSubmit".into(),
+            sent_at_ms: 1_000,
+        });
+        assert_eq!(
+            activity.label_at(1_000),
+            "Claude | working | recent hook: prompt submitted"
+        );
+    }
+
+    // The hook expires long before the turn does. The phase must still be
+    // reported, without a stale event name implying it just happened.
+    #[test]
+    fn a_working_turn_is_still_reported_once_its_hook_label_expires() {
+        let mut activity = phased(&[("UserPromptSubmit", 1_000)]);
+        activity.latest = Some(Hint {
+            harness: Harness::Claude,
+            event: "UserPromptSubmit".into(),
+            sent_at_ms: 1_000,
+        });
+        assert_eq!(activity.label_at(1_000 + HINT_LEASE_MS), "Claude | working");
+    }
+
+    #[test]
+    fn nothing_observed_still_reads_as_activity_unavailable() {
+        let activity = phased(&[]);
+        assert_eq!(activity.label_at(1_000), "Claude | activity unavailable");
     }
 
     #[test]
@@ -379,6 +649,7 @@ mod tests {
             harness: Harness::Claude,
             socket: None,
             latest: Some(hint),
+            phase: None,
         };
         assert_eq!(
             activity.label_at(20_000),
@@ -394,6 +665,7 @@ mod tests {
             harness: Harness::Claude,
             socket: Some(Activity::bind(&bridge.socket_path()).unwrap()),
             latest: None,
+            phase: None,
         };
         let socket = UnixDatagram::unbound().unwrap();
         socket.connect(bridge.socket_path()).unwrap();

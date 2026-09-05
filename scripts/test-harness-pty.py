@@ -123,7 +123,14 @@ exit 37
             assert "<a b><literal;$(no-exec)'>" in app, app
             assert "PRIVATE_FIXTURE" not in capture(0) + app
             # Past the 1s idle expansion threshold and 10s hint lease: still split.
-            wait_for(lambda: "activity unavailable" in capture(0), timeout=12)
+            # The hook label expires, but the permission prompt is still on
+            # screen, so the phase must keep saying so. Reporting "activity
+            # unavailable" here was wrong: the harness is demonstrably waiting.
+            wait_for(
+                lambda: "waiting on you" in capture(0)
+                and "recent hook" not in capture(0),
+                timeout=12,
+            )
             assert tmux("display-message", "-p", "-t", session, "#{window_zoomed_flag}") == "0"
             assert tmux("display-message", "-p", "-t", f"{session}:0.1", "#{pane_active}") == "1"
             fcntl.ioctl(master, termios.TIOCSWINSZ, struct.pack("HHHH", 18, 48, 0, 0))
