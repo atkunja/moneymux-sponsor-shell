@@ -324,7 +324,12 @@ fn run() -> Result<i32> {
         let forwarded = remaining
             .strip_prefix(&["--".to_string()])
             .unwrap_or(remaining);
-        return run_tmux_shell(harness.command(), forwarded, Some(harness));
+        let executable = harness::executable(harness)
+            .context("selected harness is not executable on the invoking shell's PATH")?;
+        let executable = executable
+            .to_str()
+            .context("harness executable path must be UTF-8")?;
+        return run_tmux_shell(executable, forwarded, Some(harness));
     }
     if args
         .first()

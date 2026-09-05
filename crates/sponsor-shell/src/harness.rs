@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
 use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -216,6 +216,16 @@ fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
 
 pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
 pub const SOCKET_ENV: &str = "SPONSOR_SHELL_HOOK_SOCKET";
+
+pub fn executable(harness: Harness) -> Option<PathBuf> {
+    let paths = std::env::var_os("PATH")?;
+    let cwd = std::env::current_dir().ok()?;
+    std::env::split_paths(&paths).find_map(|directory| {
+        let path = cwd.join(directory).join(harness.command());
+        let metadata = fs::metadata(&path).ok()?;
+        (metadata.is_file() && metadata.permissions().mode() & 0o111 != 0).then_some(path)
+    })
+}
 
 pub fn environment(harness: Option<Harness>, socket: Option<&Path>) -> Vec<String> {
     // Do not inherit an unrelated wrapper's bridge from a long-lived tmux server.
