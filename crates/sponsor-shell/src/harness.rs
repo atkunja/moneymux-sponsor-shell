@@ -587,6 +587,39 @@ mod tests {
     }
 
     #[test]
+    fn the_footer_shows_the_phase_with_the_hook_that_established_it() {
+        let mut activity = phased(&[("UserPromptSubmit", 1_000)]);
+        activity.latest = Some(Hint {
+            harness: Harness::Claude,
+            event: "UserPromptSubmit".into(),
+            sent_at_ms: 1_000,
+        });
+        assert_eq!(
+            activity.label_at(1_000),
+            "Claude | working | recent hook: prompt submitted"
+        );
+    }
+
+    // The hook expires long before the turn does. The phase must still be
+    // reported, without a stale event name implying it just happened.
+    #[test]
+    fn a_working_turn_is_still_reported_once_its_hook_label_expires() {
+        let mut activity = phased(&[("UserPromptSubmit", 1_000)]);
+        activity.latest = Some(Hint {
+            harness: Harness::Claude,
+            event: "UserPromptSubmit".into(),
+            sent_at_ms: 1_000,
+        });
+        assert_eq!(activity.label_at(1_000 + HINT_LEASE_MS), "Claude | working");
+    }
+
+    #[test]
+    fn nothing_observed_still_reads_as_activity_unavailable() {
+        let activity = phased(&[]);
+        assert_eq!(activity.label_at(1_000), "Claude | activity unavailable");
+    }
+
+    #[test]
     fn hints_expire_at_the_boundary_and_reject_future_timestamps() {
         let hint = Hint {
             harness: Harness::Claude,
