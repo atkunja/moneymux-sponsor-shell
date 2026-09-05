@@ -3,8 +3,32 @@ use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::fs;
 use std::os::unix::fs::DirBuilderExt;
+use std::os::unix::net::UnixDatagram;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
+
+fn now_ms() -> Option<u64> {
+    SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_millis().try_into().ok()
+}
+
+/// Hook failures must not change permissions, model context or harness exit status.
+pub fn emit(harness: Harness) {
+    let Some(path) = std::env::var_os(SOCKET_ENV) else { return };
+    if std::env::var(HARNESS_ENV).ok().as_deref() != Some(harness.command()) {
+        return;
+    }
+    let Some(hint) = read_hint(harness, std::io::stdin().lock()) else { return };
+    let _ = send_hint(&path.into(), &hint);
+}
+
+fn send_hint(path: &Path, hint: &Hint) -> std::io::Result<()> {
+    let socket = UnixDatagram::unbound()?;
+    socket.set_nonblocking(true)?;
+    socket.connect(path)?;
+    let bytes = serde_json::to_vec(hint).map_err(std::io::Error::other)?;
+    socket.send(&bytes)?;
+    Ok(())
+}
 
 /// Only the wrapper owns this directory. No global hook log or session registry.
 pub struct BridgeDirectory {
@@ -57,6 +81,7 @@ struct HookInput {
 struct Hint {
     harness: Harness,
     event: String,
+    sent_at_ms: u64,
 }
 
 fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
@@ -69,7 +94,7 @@ fn read_hint(harness: Harness, reader: impl Read) -> Option<Hint> {
     if !events(harness).contains(&input.hook_event_name.as_str()) {
         return None;
     }
-    Some(Hint { harness, event: input.hook_event_name })
+    Some(Hint { harness, event: input.hook_event_name, sent_at_ms: now_ms()? })
 }
 
 pub const HARNESS_ENV: &str = "SPONSOR_SHELL_HARNESS";
@@ -153,8 +178,11 @@ mod tests {
     fn hooks_discard_sensitive_fields_and_reject_unknown_events() {
         let input = br#"{"hook_event_name":"UserPromptSubmit","prompt":"secret","cwd":"/private","tool_input":{"password":"private"},"transcript_path":"/secret"}"#;
         let hint = read_hint(Harness::Claude, &input[..]).unwrap();
-        assert_eq!(serde_json::to_string(&hint).unwrap(),
-            r#"{"harness":"claude","event":"UserPromptSubmit"}"#);
+        let value = serde_json::to_value(&hint).unwrap();
+        assert_eq!(value.as_object().unwrap().len(), 3);
+        assert_eq!(value["harness"], "claude");
+        assert_eq!(value["event"], "UserPromptSubmit");
+        assert!(value["sent_at_ms"].is_u64());
         for input in [r#"{"hook_event_name":"Forged"}"#, "invalid", "{}", "[]"] {
             assert!(read_hint(Harness::Claude, input.as_bytes()).is_none());
         }
