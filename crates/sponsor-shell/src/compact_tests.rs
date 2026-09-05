@@ -9,10 +9,24 @@ fn full_creative_keeps_original_signed_geometry_and_minimum_duration() {
     let mut sequence = 1;
     let layout = Layout::new(80, ad_height(&creative, 80));
     assert!(full_creative_fits(&creative, layout));
-    assert!(!enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
-        &mut pending, layout, &mut sequence, 999));
-    assert!(enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
-        &mut pending, layout, &mut sequence, 1_000));
+    assert!(!enqueue_impression_if_needed(
+        &creative,
+        &HashSet::new(),
+        &HashSet::new(),
+        &mut pending,
+        layout,
+        &mut sequence,
+        999
+    ));
+    assert!(enqueue_impression_if_needed(
+        &creative,
+        &HashSet::new(),
+        &HashSet::new(),
+        &mut pending,
+        layout,
+        &mut sequence,
+        1_000
+    ));
     let body: serde_json::Value = serde_json::from_str(&pending[0].body).unwrap();
     assert_eq!(body["lineCount"], ad_height(&creative, 80));
     assert_eq!(body["decisionToken"], "fixture-token");
@@ -28,8 +42,15 @@ fn short_panes_never_queue_or_consume_an_impression_sequence() {
     let mut pending = Vec::new();
     let mut sequence = 7;
     for rows in [1, 2, 4, 6] {
-        assert!(!enqueue_impression_if_needed(&creative, &HashSet::new(), &HashSet::new(),
-            &mut pending, Layout::new(80, rows), &mut sequence, 60_000));
+        assert!(!enqueue_impression_if_needed(
+            &creative,
+            &HashSet::new(),
+            &HashSet::new(),
+            &mut pending,
+            Layout::new(80, rows),
+            &mut sequence,
+            60_000
+        ));
     }
     assert!(pending.is_empty());
     assert_eq!(sequence, 7);
@@ -40,9 +61,15 @@ fn short_preview_link_is_navigable_and_footer_has_no_hit_target() {
     let creative = default_ad_creative();
     let layout = Layout::new(80, 6);
     let mut lines = ad_lines(&creative, layout.cols, layout.rows, 0);
-    let row = lines.iter().position(|line| line.contains(&creative.url)).unwrap();
+    let row = lines
+        .iter()
+        .position(|line| line.contains(&creative.url))
+        .unwrap();
     let col = lines[row].find(&creative.url).unwrap() + 4;
-    assert_eq!(link_at_cell(&creative, layout, 0, row as u16, col as u16), Some(creative.url.clone()));
+    assert_eq!(
+        link_at_cell(&creative, layout, 0, row as u16, col as u16),
+        Some(creative.url.clone())
+    );
     assert!(linkified_line(&lines[row], &creative, None).contains("\x1b]8;;https://railway.app"));
     let footer = lines.len() - 1;
     add_activity_footer(&mut lines, layout.cols, "Claude | activity unavailable");
@@ -62,7 +89,10 @@ fn cramped_preview_is_hidden_instead_of_cropping_a_link() {
         assert!(!lines.join("\n").contains(&creative.sponsor));
         for row in 0..rows {
             for col in 0..cols {
-                assert_eq!(link_at_cell(&creative, Layout::new(cols, rows), 0, row, col), None);
+                assert_eq!(
+                    link_at_cell(&creative, Layout::new(cols, rows), 0, row, col),
+                    None
+                );
             }
         }
     }

@@ -20,9 +20,9 @@ use crossterm::{execute, queue};
 use serde::{Deserialize, Serialize};
 use url::{Host, Url};
 
-mod harness;
 #[cfg(test)]
 mod compact_tests;
+mod harness;
 
 const ANIMATION_TICK: Duration = Duration::from_millis(250);
 const AD_PANE_ARG: &str = "--sponsor-shell-ad-pane";
@@ -1074,7 +1074,9 @@ fn enqueue_impression_if_needed(
     next_render_sequence: &mut u64,
     visible_duration_ms: u128,
 ) -> bool {
-    if !full_creative_fits(creative, layout) || visible_duration_ms < MIN_RENDERED_VISIBLE_DURATION.as_millis() {
+    if !full_creative_fits(creative, layout)
+        || visible_duration_ms < MIN_RENDERED_VISIBLE_DURATION.as_millis()
+    {
         return false;
     }
     let Some(ad_decision_id) = &creative.ad_decision_id else {
@@ -2454,8 +2456,11 @@ fn add_activity_footer(lines: &mut [String], cols: u16, label: &str) {
 // The existing billing contract describes the full creative, not a short preview.
 fn full_creative_fits(creative: &AdCreative, layout: Layout) -> bool {
     let inner_width = usize::from(layout.cols).saturating_sub(2);
-    layout.cols > 2 && layout.rows >= ad_height(creative, layout.cols)
-        && ad_body_lines(creative, inner_width).iter().all(|line| line.chars().count() <= inner_width)
+    layout.cols > 2
+        && layout.rows >= ad_height(creative, layout.cols)
+        && ad_body_lines(creative, inner_width)
+            .iter()
+            .all(|line| line.chars().count() <= inner_width)
 }
 
 fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
@@ -2463,14 +2468,30 @@ fn short_ad_lines(creative: &AdCreative, cols: u16, rows: u16) -> Vec<String> {
     let inner = width.saturating_sub(2);
     let capacity = usize::from(rows).saturating_sub(2);
     // Never crop a destination into a different-looking clickable address.
-    let mut body = wrap_text(&format!("Sponsored preview: {}", creative.sponsor), inner.max(1), usize::MAX);
+    let mut body = wrap_text(
+        &format!("Sponsored preview: {}", creative.sponsor),
+        inner.max(1),
+        usize::MAX,
+    );
     body.push(creative.url.clone());
-    body.extend(wrap_text(&format!("[{}]", creative.disclosure), inner.max(1), usize::MAX));
-    if inner == 0 || creative.url.is_empty() || creative.url.chars().count() > inner || body.len() > capacity {
+    body.extend(wrap_text(
+        &format!("[{}]", creative.disclosure),
+        inner.max(1),
+        usize::MAX,
+    ));
+    if inner == 0
+        || creative.url.is_empty()
+        || creative.url.chars().count() > inner
+        || body.len() > capacity
+    {
         body = vec!["Sponsor hidden: enlarge pane".to_string()];
         body.truncate(capacity);
-    } else if let Some(logo) = [&creative.logos.small, &creative.logos.large].into_iter()
-        .find(|logo| !logo.is_empty() && logo.len() + body.len() <= capacity && logo_width(logo) <= inner) {
+    } else if let Some(logo) = [&creative.logos.small, &creative.logos.large]
+        .into_iter()
+        .find(|logo| {
+            !logo.is_empty() && logo.len() + body.len() <= capacity && logo_width(logo) <= inner
+        })
+    {
         // Include a whole supplied logo, never the top few rows of a larger one.
         let mut branded = logo.clone();
         branded.extend(body);
