@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -297,6 +297,23 @@ fn run() -> Result<i32> {
             if let Some(harness) = harness::Harness::parse(&args[1]) {
                 harness::emit(harness);
             }
+        }
+        return Ok(0);
+    }
+    if args.first().is_some_and(|arg| arg == "claude-status-line") {
+        // Claude Code sends session JSON on stdin: transcript path, working
+        // directory, repository owner and name, session id and name, prompt id,
+        // session cost, rate-limit consumption. An advertisement needs none of
+        // it. Drain it so the writer never blocks on a full pipe, then discard
+        // it without parsing; nothing here reaches the network.
+        let mut discarded = Vec::new();
+        let _ = io::stdin().lock().read_to_end(&mut discarded);
+        drop(discarded);
+        // No request on this path. Updates debounce at 300ms and Claude Code
+        // kills an in-flight command when a new one arrives, so a fetch here
+        // could not be retried and would delay the user's own status line.
+        if let Some(line) = load_ad_creative().as_ref().and_then(claude_status_line) {
+            println!("{line}");
         }
         return Ok(0);
     }
