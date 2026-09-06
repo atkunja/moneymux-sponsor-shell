@@ -4,6 +4,16 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.7 - 2026-09-05
+
+### Fixed
+
+- `claude-spinner-setup` now emits Claude Code's documented array of tip
+  strings. Earlier releases emitted object entries and an unsupported `label`
+  field, causing Claude Code 2.1.191 to reject the settings file.
+- `Sponsored:` is embedded in the tip string itself so disclosure is present in
+  the text Claude renders while built-in tips remain enabled.
+
 ## 0.1.6 - 2026-09-05
 
 ### Fixed
