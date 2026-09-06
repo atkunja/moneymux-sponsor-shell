@@ -10,6 +10,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
   Code's active work indicator after an explicit, reversible install command.
 - The same companion supports the official Codex VS Code extension and follows
   its current hashed entry bundle instead of assuming a fixed asset name.
+- Reviewed PNG, JPEG, and WebP creative logos render from bounded data URLs,
+  with deterministic sponsor initials when no logo is present.
 
 ## 0.1.9 - 2026-09-05
 
