@@ -13,6 +13,7 @@ This repository contains:
 
 - the Rust `sponsor-shell` executable;
 - the `@moneymux/sponsor-shell` npm platform launcher;
+- the opt-in MoneyMux VS Code companion extension;
 - tests and release automation for both components; and
 - the complete client-side data disclosure.
 
@@ -68,6 +69,12 @@ uses and immediately closes a short-lived MoneyMux terminal session so the
 decision follows the same eligibility contract as interactive placements.
 Its JSON replaces Claude Code's action-verb rotation with a single sponsored
 string and prefixes that string with `Sponsored:`.
+
+For a logo-enabled card inside compatible Claude Code and Codex VS Code panels,
+build or install the companion extension in [`packages/vscode`](packages/vscode).
+Run **MoneyMux: Install Rich Editor Placement** and accept its explicit modal
+disclosure. This editor surface is also non-billable: it selects approved
+inventory but sends no impression or click event.
 
 The current source also offers opt-in protected harness sessions:
 
