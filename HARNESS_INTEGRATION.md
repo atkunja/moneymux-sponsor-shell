@@ -67,11 +67,11 @@ session is closed and before the tmux workspace is destroyed. A force-killed wra
 leave an empty directory/socket inode in the operating system's temporary area;
 it contains no prompt, transcript or token data.
 
-## Optional sponsored spinner tip
+## Optional sponsored spinner verb
 
-The waiting state itself. `spinnerTipsOverride` is a documented Claude Code
-setting that adds strings to the tip rotation shown while a turn runs. MoneyMux
-puts `Sponsored:` inside the custom tip string itself, so the required
+The waiting state itself. `spinnerVerbs` is a documented Claude Code setting
+that controls the action words shown while a turn runs. MoneyMux uses replacement
+mode and puts `Sponsored:` inside the only custom string, so the required
 disclosure is part of the rendered line.
 
 ```sh
@@ -84,17 +84,16 @@ command runs. That lookup uses a short-lived setup session required by the
 marketplace decision contract and closes it immediately afterward. An unlinked
 terminal can still use an injected local creative.
 
-Two deliberate refusals. It does **not** use `spinnerVerbs`: that slot says what
-Claude is doing — "Accomplishing", "Baking" — so a sponsor there dresses an
-advertisement up as the model's own status. And it does **not** set
-`excludeDefault`, so Claude Code's built-in tips keep showing alongside it.
+This changes Claude's action-word rotation for the user who opts in. The string
+starts with `Sponsored:` so the advertisement does not pretend to describe what
+Claude is doing.
 
 It earns nothing. Claude Code renders the rotation itself and reports nothing
 back, so there is no impression, no click and no visibility signal to bill on.
 Earnings come from the sidecar, which can observe its own pane. The creative is
 fixed when you install it; re-run the command to refresh it.
 
-Remove it by deleting the `spinnerTipsOverride` key you added.
+Remove it by deleting the `spinnerVerbs` key you added.
 
 ## Optional Claude status line
 
