@@ -1680,7 +1680,7 @@ fn run_sponsor_pane() -> Result<()> {
     let _guard = PaneGuard::enter()?;
     let mut activity = harness::Activity::from_env();
     let mut stdout = io::stdout();
-    let terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
+    let mut terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
     let mut ads_shown_this_session = 0_u64;
     let mut next_render_sequence = 1_u64;
     let mut last_reported_impression_at: Option<Instant> = None;
@@ -1835,6 +1835,7 @@ fn run_sponsor_pane() -> Result<()> {
                 }
 
                 if !tmux.app_pane_exists() || tmux.app_pane_dead() {
+                    terminal_session.finish();
                     tmux.kill_session().ok();
                     return Ok(());
                 }
