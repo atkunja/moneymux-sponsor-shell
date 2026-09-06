@@ -9,6 +9,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 - Normal wrapped commands now close their remote terminal session before the
   tmux workspace is destroyed. Previously the app pane killed tmux first, so
   the sponsor pane could not send its best-effort session-end request.
+- Global help now lists `claude-spinner-setup`, matching the documented
+  management command used by the staging demo.
 
 ## 0.1.7 - 2026-09-05
 
