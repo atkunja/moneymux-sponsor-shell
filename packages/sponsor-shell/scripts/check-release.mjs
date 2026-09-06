@@ -12,6 +12,7 @@ async function read(relativePath) {
 
 const packageJson = JSON.parse(await read('packages/sponsor-shell/package.json'))
 const vscodePackageJson = JSON.parse(await read('packages/vscode/package.json'))
+const vscodePackageLock = JSON.parse(await read('packages/vscode/package-lock.json'))
 const cargoManifest = await read('crates/sponsor-shell/Cargo.toml')
 const cargoLock = await read('Cargo.lock')
 const changelog = await read('CHANGELOG.md')
@@ -28,6 +29,8 @@ const lockedVersion = cargoLock.match(
 assert.match(version, /^\d+\.\d+\.\d+$/, `npm version is not stable semver: ${version}`)
 assert.equal(cargoVersion, version, 'Rust and npm package versions must match')
 assert.equal(vscodePackageJson.version, version, 'VS Code and npm package versions must match')
+assert.equal(vscodePackageLock.version, version, 'VS Code lockfile version must match the release')
+assert.equal(vscodePackageLock.packages[''].version, version, 'VS Code lockfile root must match the release')
 assert.equal(lockedVersion, version, 'Cargo.lock and package versions must match')
 assert.match(
   changelog,
