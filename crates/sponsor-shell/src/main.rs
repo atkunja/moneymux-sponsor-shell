@@ -4048,6 +4048,29 @@ mod tests {
         assert!(end.starts_with("POST /api/terminal-sessions/session-refused/end HTTP/1.1\r\n"));
     }
 
+    #[test]
+    fn explicit_session_finish_is_idempotent() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(listener, "200 OK", r#"{"ok":true}"#)
+        });
+
+        with_linked_test_device(&base_url, || {
+            let mut session = RemoteTerminalSessionGuard {
+                id: Some("session-explicit".into()),
+            };
+            session.finish();
+            session.finish();
+        });
+        let request = server.join().unwrap();
+
+        assert!(request.starts_with(
+            "POST /api/terminal-sessions/session-explicit/end HTTP/1.1\r\n"
+        ));
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
