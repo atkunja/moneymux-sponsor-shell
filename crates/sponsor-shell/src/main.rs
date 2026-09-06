@@ -1021,8 +1021,9 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
 
 fn claude_spinner_settings(tip: &str) -> serde_json::Value {
     serde_json::json!({
-        "spinnerTipsOverride": {
-            "tips": [tip],
+        "spinnerVerbs": {
+            "mode": "replace",
+            "verbs": [tip],
         },
     })
 }
