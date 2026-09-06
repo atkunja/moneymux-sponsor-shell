@@ -2009,7 +2009,7 @@ fn run_tmux_shell(
     let mut app_parts = lifecycle_environment;
     app_parts.push(command.to_string());
     app_parts.extend(command_args.iter().cloned());
-    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), &session, app_parts);
+    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), app_parts);
 
     run_tmux([
         "new-session",
@@ -2053,7 +2053,7 @@ fn run_tmux_shell(
     Ok(exit_code)
 }
 
-fn sponsor_app_command(exit_file: &str, _session: &str, app_parts: Vec<String>) -> String {
+fn sponsor_app_command(exit_file: &str, app_parts: Vec<String>) -> String {
     // tmux uses the user's default shell. In zsh, `status` is read-only.
     let exit_trap = format!(
         "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; exit \"$sponsor_exit_code\"",
@@ -3310,7 +3310,6 @@ mod tests {
             ));
             let command = sponsor_app_command(
                 &exit_file.to_string_lossy(),
-                "test-session",
                 vec!["/bin/sh".into(), "-c".into(), "exit 37".into()],
             );
             let output = Command::new(shell)
