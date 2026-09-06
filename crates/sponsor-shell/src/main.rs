@@ -2205,13 +2205,14 @@ impl SponsorTmux {
 
     fn app_pane_exists(&self) -> bool {
         self.tmux_output([
-            "display-message",
-            "-p",
+            "list-panes",
             "-t",
-            &self.app_target(),
-            "#{pane_id}",
+            &self.session,
+            "-F",
+            "#{pane_index}",
         ])
-        .is_ok()
+        .ok()
+        .is_some_and(|output| output.lines().any(|line| line.trim() == "1"))
     }
 
     fn app_pane_dead(&self) -> bool {
