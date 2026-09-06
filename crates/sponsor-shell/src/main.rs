@@ -4001,6 +4001,38 @@ mod tests {
     }
 
     #[test]
+    fn spinner_setup_keeps_local_fallback_when_session_start_fails() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(listener, "503 Service Unavailable", r#"{"error":"later"}"#)
+        });
+        let ad_file = env::temp_dir().join(format!(
+            "sponsor-shell-spinner-fallback-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &ad_file,
+            r#"{"enabled":true,"sponsor":"Local fallback","url":"https://local.example"}"#,
+        )
+        .unwrap();
+        let previous_ad_file = env::var(SPONSOR_AD_FILE_ENV).ok();
+        env::set_var(SPONSOR_AD_FILE_ENV, &ad_file);
+
+        let creative = with_linked_test_device(&base_url, load_claude_spinner_creative).unwrap();
+        let request = server.join().unwrap();
+
+        match previous_ad_file {
+            Some(value) => env::set_var(SPONSOR_AD_FILE_ENV, value),
+            None => env::remove_var(SPONSOR_AD_FILE_ENV),
+        }
+        fs::remove_file(ad_file).unwrap();
+        assert_eq!(creative.sponsor, "Local fallback");
+        assert!(request.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+    }
+
+    #[test]
     fn spinner_setup_closes_session_when_decision_is_refused() {
         let _environment = lock_process_environment();
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
