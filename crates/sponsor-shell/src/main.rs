@@ -3963,28 +3963,9 @@ mod tests {
             [start, decision, end]
         });
 
-        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
-        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
-        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
-        env::set_var(SPONSOR_API_BASE_ENV, &base_url);
-        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
-        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
-
-        let creative = load_claude_spinner_creative().unwrap();
+        let creative =
+            with_linked_test_device(&base_url, || load_claude_spinner_creative().unwrap());
         let [start, decision, end] = server.join().unwrap();
-
-        match previous_api {
-            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
-            None => env::remove_var(SPONSOR_API_BASE_ENV),
-        }
-        match previous_device {
-            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
-            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
-        }
-        match previous_token {
-            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
-            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
-        }
 
         assert_eq!(creative.sponsor, "Current campaign");
         assert!(start.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
