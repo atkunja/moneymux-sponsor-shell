@@ -3285,6 +3285,32 @@ mod tests {
         String::from_utf8(request).unwrap()
     }
 
+    fn with_linked_test_device<T>(base_url: &str, action: impl FnOnce() -> T) -> T {
+        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
+        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
+        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
+        env::set_var(SPONSOR_API_BASE_ENV, base_url);
+        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
+        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
+
+        let result = action();
+
+        match previous_api {
+            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
+            None => env::remove_var(SPONSOR_API_BASE_ENV),
+        }
+        match previous_device {
+            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
+        }
+        match previous_token {
+            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
+        }
+
+        result
+    }
+
     #[test]
     fn app_exit_trap_preserves_failure_in_bash_and_zsh() {
         for shell in ["/bin/bash", "/bin/zsh"] {
@@ -3927,11 +3953,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         let server = thread::spawn(move || {
-            let start = serve_http_request(
-                &listener,
-                "200 OK",
-                r#"{"id":"session-spinner"}"#,
-            );
+            let start = serve_http_request(&listener, "200 OK", r#"{"id":"session-spinner"}"#);
             let decision = serve_http_request(
                 &listener,
                 "200 OK",
@@ -3974,9 +3996,7 @@ mod tests {
             .to_ascii_lowercase()
             .contains("\r\nauthorization: bearer ssdev_spinner_token\r\n"));
         assert!(decision.contains(r#""placement":"prompt_boundary""#));
-        assert!(end.starts_with(
-            "POST /api/terminal-sessions/session-spinner/end HTTP/1.1\r\n"
-        ));
+        assert!(end.starts_with("POST /api/terminal-sessions/session-spinner/end HTTP/1.1\r\n"));
         assert!([start, decision, end]
             .iter()
             .all(|request| !request.contains("/api/events/")));
