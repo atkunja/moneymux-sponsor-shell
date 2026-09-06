@@ -2063,12 +2063,11 @@ fn run_tmux_shell(
     Ok(exit_code)
 }
 
-fn sponsor_app_command(exit_file: &str, session: &str, app_parts: Vec<String>) -> String {
+fn sponsor_app_command(exit_file: &str, _session: &str, app_parts: Vec<String>) -> String {
     // tmux uses the user's default shell. In zsh, `status` is read-only.
     let exit_trap = format!(
-        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; tmux kill-session -t {}; exit \"$sponsor_exit_code\"",
+        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; exit \"$sponsor_exit_code\"",
         shell_quote(exit_file),
-        shell_quote(session),
     );
     format!(
         // Catch (do not ignore) SIGINT in the supervisory shell. The wrapped
