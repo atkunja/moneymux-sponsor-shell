@@ -4,6 +4,16 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.6 - 2026-09-05
+
+### Fixed
+
+- `claude-spinner-setup` now creates a short-lived terminal session and binds
+  its ad decision to that session. The marketplace requires `sessionId`; 0.1.5
+  omitted it and hid the resulting API rejection as unavailable inventory.
+- The setup session is closed after successful and refused decisions, and the
+  print-only integration still sends no impression or click events.
+
 ## 0.1.5 - 2026-09-05
 
 ### Fixed
