@@ -12,6 +12,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
   its current hashed entry bundle instead of assuming a fixed asset name.
 - Reviewed PNG, JPEG, and WebP creative logos render from bounded data URLs,
   with deterministic sponsor initials when no logo is present.
+- Vendor webview changes keep a byte-exact, mode-600 backup plus the original
+  SHA-256 digest and refuse unknown or changed bundle layouts.
 
 ## 0.1.9 - 2026-09-05
 
