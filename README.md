@@ -76,6 +76,9 @@ Run **MoneyMux: Install Rich Editor Placement** and accept its explicit modal
 disclosure. This editor surface is also non-billable: it selects approved
 inventory but sends no impression or click event.
 
+Release `v0.1.10` includes `moneymux-sponsor-shell-0.1.10.vsix` in its GitHub
+release assets.
+
 The current source also offers opt-in protected harness sessions:
 
 ```sh
