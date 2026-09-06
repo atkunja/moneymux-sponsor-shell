@@ -1104,7 +1104,7 @@ fn load_ad_creative() -> Option<AdCreative> {
 fn load_claude_spinner_creative() -> Option<AdCreative> {
     // A decision is not an impression. This fetch selects current eligible
     // inventory, but the print-only setup path never reports visibility or a
-    // click because Claude owns the tip rotation and exposes neither signal.
+    // click because Claude owns the native spinner and exposes neither signal.
     let terminal_session = RemoteTerminalSessionGuard::start("claude-spinner-setup");
     let remote = terminal_session.id().and_then(|session_id| {
         load_remote_ad_creative(Layout::current(), Some(session_id), None, 0)
