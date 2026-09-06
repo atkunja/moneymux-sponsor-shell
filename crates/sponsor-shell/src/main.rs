@@ -1015,11 +1015,11 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
     )
 }
 
-fn claude_spinner_settings(tip: &str) -> serde_json::Value {
+fn claude_spinner_settings(verb: &str) -> serde_json::Value {
     serde_json::json!({
         "spinnerVerbs": {
             "mode": "replace",
-            "verbs": [tip],
+            "verbs": [verb],
         },
     })
 }
@@ -3859,7 +3859,7 @@ mod tests {
     }
 
     #[test]
-    fn the_spinner_tip_carries_the_sponsor_and_its_destination() {
+    fn the_spinner_verb_carries_the_sponsor_and_its_destination() {
         let creative = AdCreative {
             id: "decision-1".into(),
             sponsor: "Railway".into(),
@@ -3871,12 +3871,12 @@ mod tests {
         assert!(text.contains("Railway"), "{text}");
         // Forced https so a creative cannot put another scheme in the spinner.
         assert!(text.contains("https://railway.app"), "{text}");
-        // Claude Code caps tip text at 500 characters.
+        // Stay well below any practical terminal-row limit.
         assert!(text.chars().count() <= 500, "{}", text.chars().count());
     }
 
     #[test]
-    fn a_long_creative_still_fits_a_spinner_tip() {
+    fn a_long_creative_still_fits_a_spinner_verb() {
         let creative = AdCreative {
             id: "decision-1".into(),
             sponsor: "S".repeat(400),
