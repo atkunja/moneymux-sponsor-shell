@@ -37,6 +37,11 @@ a fix and release, and credit the reporter when requested and appropriate.
 - Remote creative text is stripped of terminal control and bidirectional
   override characters before rendering.
 - Only schema-declared creative links become terminal hyperlinks.
+- Rich editor placement requires a modal opt-in, checks known vendor bundle
+  anchors, and creates a checksum-verified byte-for-byte backup before writing.
+- Editor creative is embedded as inert data and rendered with DOM text nodes;
+  logos accept only bounded PNG, JPEG, or WebP data URLs.
+- Rich editor placement sends no impression or click events and is non-billable.
 - Release assets are checksumed and signed using keyless Sigstore identity.
 - npm releases are expected to carry npm provenance from GitHub Actions.
 

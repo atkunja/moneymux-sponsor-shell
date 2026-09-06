@@ -1,8 +1,9 @@
 # Sponsor Shell threat model
 
-This model covers the Rust terminal client, npm launcher, native release
-artifacts, and their interaction with a configured MoneyMux API. It does not
-claim that the private MoneyMux service is implemented in this repository.
+This model covers the Rust terminal client, npm launcher, VS Code companion,
+native release artifacts, and their interaction with a configured MoneyMux API.
+It does not claim that the private MoneyMux service is implemented in this
+repository.
 
 ## Security objectives
 
@@ -15,7 +16,9 @@ Sponsor Shell must:
 4. protect the device bearer token at rest and in transit;
 5. make privilege-changing or package-installing behavior explicit;
 6. ensure a headless/CI render cannot qualify as a human impression; and
-7. let users trace distributed binaries to this public source.
+7. let users trace distributed binaries to this public source; and
+8. never alter a vendor editor bundle without explicit consent and a verified,
+   byte-exact restoration path.
 
 ## Assets
 
@@ -53,6 +56,22 @@ because the marketplace requires decisions to be session-bound; that path does
 not emit impression or click evidence. The generated Claude setting uses the
 vendor's string-array schema and carries `Sponsored:` in the displayed string,
 not in an unsupported sibling field Claude could ignore.
+
+### VS Code companion to vendor webviews
+
+VS Code exposes no supported API for rendering inside another extension's
+webview. The companion therefore requires a modal opt-in before changing one
+known JavaScript entry bundle. It checks version-specific structural anchors,
+stores the original bytes and checksum beside the target, inserts a uniquely
+bounded script, and refuses missing, incomplete, stale, or checksum-mismatched
+backup state. Restore writes only the verified original bytes back.
+
+Remote creative is normalized before patch generation. Text is embedded as
+base64-encoded JSON and assigned with `textContent`, never parsed as HTML. Logos
+are limited to base64 PNG, JPEG, or WebP payloads of at most 64 KiB; SVG and
+remote image URLs are refused. The card activates from DOM state only, never
+reads chat content, and sends no event or other network request from the vendor
+webview.
 
 ### Harness hooks to local activity labels
 
@@ -102,6 +121,11 @@ schema mapping, declared-link allowlisting, HTTPS canonicalization, bounded
 text/art dimensions, and a separate rendering process/pane. Renderer safety has
 unit tests covering nested terminal hyperlinks, undeclared links, multibyte
 text, and many terminal sizes.
+
+The editor adapter additionally refuses executable image formats and oversized
+logos, keeps creative data out of JavaScript source, writes copy through DOM
+text nodes, and uses a canonical HTTPS destination with `noopener` and
+`noreferrer`.
 
 ### Device-token theft
 
@@ -153,6 +177,17 @@ policy, pinned GitHub Action commit SHAs, grouped Dependabot updates, compiler
 lint/test gates, and source-only Git history without committed native binaries.
 
 ## Residual risks
+
+- Claude Code or Codex may change an undocumented webview DOM or bundle layout.
+  Compatibility guards prevent unknown bundles from being changed, but a
+  supported vendor update can still make the installed card disappear or render
+  incorrectly until MoneyMux ships a new adapter.
+- Uninstalling the MoneyMux extension cannot be relied on to execute restore
+  code. Users must run **MoneyMux: Restore Claude Code and Codex** before
+  uninstalling; byte-exact backups remain beside patched bundles otherwise.
+- The editor card's DOM presence does not prove attention or visibility and is
+  deliberately non-billable. A future paid editor surface requires a separate,
+  versioned visibility and click-evidence contract.
 
 - Vendor hook delivery can be absent, delayed or include child-agent activity.
   The label describes a recent event, not a reliable loading or streaming state.

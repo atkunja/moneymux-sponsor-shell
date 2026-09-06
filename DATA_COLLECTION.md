@@ -1,7 +1,15 @@
 # Client data and behavior disclosure
 
 This document describes the observable client behavior in this repository. It
-is intended to make the terminal trust boundary explicit.
+is intended to make the client trust boundary explicit.
+
+The optional VS Code companion reads the same linked configuration only after
+the user runs its install or refresh command. It selects one approved creative
+through a short-lived `vscode-editor-setup` session with placement
+`editor_overlay`, then closes that session. It sends the device ID, bearer
+token, a generated request ID, an interactive-editor signal, and fixed
+80-by-24 selection dimensions. It never reads editor text, prompts, responses,
+workspace paths, open files, or vendor transcripts.
 
 ## Local execution
 
@@ -66,6 +74,14 @@ For local creative development, Sponsor Shell may read
 `.sponsor-shell/ad.json` in the current directory. `SPONSOR_SHELL_AD_FILE` can
 override that path.
 
+After explicit modal confirmation, the VS Code companion writes a bounded
+MoneyMux script to the installed Claude Code and/or Codex webview entry bundle.
+A mode-0600 byte-exact backup and JSON metadata file containing the vendor ID,
+version, timestamp, and original SHA-256 checksum are stored beside each changed
+bundle. No credential or creative is written to backup metadata. The sponsored
+creative is embedded in the patched script; an approved logo is embedded as a
+base64 PNG, JPEG, or WebP data URL and makes no third-party image request.
+
 ## Network requests
 
 Network requests are sent only after a device has been linked, except that
@@ -121,6 +137,12 @@ Claude exposes no visibility signal for its own spinner.
 The printed `spinnerVerbs` replacement contains one plain string beginning `Sponsored:`;
 it contains no decision ID, session ID, device ID, bearer token, or hidden
 tracking field.
+
+The VS Code companion uses the same endpoints with a session named
+`vscode-editor-setup` and placement `editor_overlay`. It reports `isTty: false`
+and `isInteractive: true`, because a graphical editor is interactive but is not
+a terminal. It does not call either event endpoint; selecting or displaying the
+editor card is non-billable.
 
 ### Qualified impression
 

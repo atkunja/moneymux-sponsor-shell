@@ -1,0 +1,5 @@
+{
+  "apiBaseUrl": "https://staging.moneymux.com/",
+  "deviceId": "device_fixture",
+  "deviceToken": "ssdev_fixture_not_a_secret"
+}
