@@ -4,6 +4,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+## 0.1.8 - 2026-09-05
+
 ### Fixed
 
 - Normal wrapped commands now close their remote terminal session before the
