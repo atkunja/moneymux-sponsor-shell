@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.5
+npm install --global @moneymux/sponsor-shell@0.1.6
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
