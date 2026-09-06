@@ -990,7 +990,7 @@ fn claude_status_line_setup(executable: &str) -> String {
 /// honest ones here are that this placement earns nothing and cannot be
 /// measured, and that the creative is fixed at install time.
 fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
-    let Some(verb) = creative.and_then(claude_spinner_tip) else {
+    let Some(verb) = creative.and_then(claude_spinner_verb) else {
         return "No approved creative is available for this terminal, so there is no sponsored \
                 spinner message to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
@@ -1041,7 +1041,7 @@ fn claude_spinner_settings(tip: &str) -> serde_json::Value {
 /// Not billable and not trackable. Claude Code renders the rotation itself and
 /// tells nobody, so there is no impression, no click and no visibility signal
 /// here at all — unlike the sidecar, which can observe its own pane.
-fn claude_spinner_tip(creative: &AdCreative) -> Option<String> {
+fn claude_spinner_verb(creative: &AdCreative) -> Option<String> {
     if creative.id == "local-disabled" {
         return None;
     }
@@ -3874,7 +3874,7 @@ mod tests {
             url: "railway.app".into(),
             ..inactive_creative()
         };
-        let text = claude_spinner_tip(&creative).unwrap();
+        let text = claude_spinner_verb(&creative).unwrap();
         assert!(text.starts_with("Sponsored: "), "{text}");
         assert!(text.contains("Railway"), "{text}");
         // Forced https so a creative cannot put another scheme in the spinner.
@@ -3891,7 +3891,7 @@ mod tests {
             url: format!("example.test/{}", "p".repeat(400)),
             ..inactive_creative()
         };
-        let text = claude_spinner_tip(&creative).unwrap();
+        let text = claude_spinner_verb(&creative).unwrap();
         assert!(text.chars().count() <= 500, "{}", text.chars().count());
         // The destination must survive truncation, not be cut off entirely.
         assert!(text.contains("https://example.test/"), "{text}");
@@ -3899,7 +3899,7 @@ mod tests {
 
     #[test]
     fn no_inventory_installs_no_spinner_verb() {
-        assert!(claude_spinner_tip(&inactive_creative()).is_none());
+        assert!(claude_spinner_verb(&inactive_creative()).is_none());
         let setup = claude_spinner_setup(None);
         assert!(setup.contains("No approved creative"), "{setup}");
         assert!(!setup.contains("spinnerVerbs"), "{setup}");
