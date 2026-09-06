@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.8
+npm install --global @moneymux/sponsor-shell@0.1.9
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
