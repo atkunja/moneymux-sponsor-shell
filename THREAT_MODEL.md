@@ -48,7 +48,9 @@ Requests use HTTPS except for explicit local-development hosts. The device token
 is placed in the authorization header only after URL validation succeeds.
 One-off Claude spinner inventory lookup creates and closes a terminal session
 because the marketplace requires decisions to be session-bound; that path does
-not emit impression or click evidence.
+not emit impression or click evidence. The generated Claude setting uses the
+vendor's string-array schema and carries `Sponsored:` in the displayed string,
+not in an unsupported sibling field Claude could ignore.
 
 ### Harness hooks to local activity labels
 
