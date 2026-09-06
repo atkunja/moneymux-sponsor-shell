@@ -48,4 +48,3 @@ test('creates a deterministic two-character logo fallback', () => {
   assert.equal(initialsForSponsor('Railway'), 'R')
   assert.equal(initialsForSponsor('***'), 'AD')
 })
-

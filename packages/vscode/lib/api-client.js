@@ -65,4 +65,3 @@ module.exports = {
   fetchEditorCreative,
   postJson,
 }
-

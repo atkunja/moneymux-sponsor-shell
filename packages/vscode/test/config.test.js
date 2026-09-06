@@ -35,4 +35,3 @@ test('permits HTTPS and loopback HTTP API origins only', () => {
   assert.throws(() => validateApiBaseUrl('http://moneymux.com'), /must use HTTPS/)
   assert.throws(() => validateApiBaseUrl('https://token@moneymux.com'), /must use HTTPS/)
 })
-

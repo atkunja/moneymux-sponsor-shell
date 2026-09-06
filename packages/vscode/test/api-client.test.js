@@ -81,4 +81,3 @@ test('returns null rather than inventing an advertiser when inventory is empty',
   })
   assert.equal(creative, null)
 })
-

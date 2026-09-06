@@ -45,4 +45,3 @@ test('ignores unrelated and incompatible extensions', () => {
 test('does not allow discovered paths to escape a vendor extension', () => {
   assert.throws(() => resolveInside('/safe/extension', '../../outside.js'), /outside/)
 })
-

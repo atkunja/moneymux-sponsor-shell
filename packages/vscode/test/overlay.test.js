@@ -51,4 +51,3 @@ test('updates one bounded patch instead of stacking overlays', () => {
 test('refuses an unknown vendor adapter', () => {
   assert.throws(() => buildOverlayPatch('desktop', creative), /Unsupported editor target/)
 })
-

@@ -57,4 +57,3 @@ test('fails closed on an unknown vendor build', () => {
   fs.writeFileSync(target.bundlePath, 'new incompatible vendor bundle')
   assert.throws(() => installTarget(target, creative), /not compatible/)
 })
-

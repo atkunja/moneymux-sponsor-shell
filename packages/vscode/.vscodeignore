@@ -3,4 +3,3 @@ test/**
 node_modules/**
 *.vsix
 npm-debug.log
-

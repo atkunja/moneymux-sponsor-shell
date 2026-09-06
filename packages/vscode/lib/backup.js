@@ -70,4 +70,3 @@ module.exports = {
   restoreBackup,
   sha256,
 }
-

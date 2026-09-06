@@ -51,4 +51,3 @@ test('refuses to restore a tampered backup', () => {
 test('reports no-op when a target has no MoneyMux backup', () => {
   assert.equal(restoreBackup(fixtureBundle()), false)
 })
-

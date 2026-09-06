@@ -191,4 +191,3 @@ module.exports = {
   hasOverlayPatch,
   stripOverlayPatch,
 }
-

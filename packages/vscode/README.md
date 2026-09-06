@@ -52,4 +52,3 @@ npm run package
 
 The generated `.vsix` can be installed with **Extensions: Install from VSIX** or
 with `code --install-extension <file>.vsix`.
-
