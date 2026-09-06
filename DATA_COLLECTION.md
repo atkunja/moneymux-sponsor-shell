@@ -112,10 +112,11 @@ arguments are not sent. When the session ends, the client posts to
 - seconds since the last qualified ad, when available.
 
 `sponsor-shell claude-spinner-setup` uses this same decision endpoint to select
-current eligible creative for a linked terminal. It sends no terminal-session
-ID or prior-ad timing for that one-off selection. It does not call the
-impression or click endpoints, because Claude exposes no visibility signal for
-its own tip rotation.
+current eligible creative for a linked terminal. It creates a short-lived
+terminal session named `claude-spinner-setup`, includes that session ID in the
+one-off decision, and closes the session before returning. It sends no
+prior-ad timing and does not call the impression or click endpoints, because
+Claude exposes no visibility signal for its own tip rotation.
 
 ### Qualified impression
 
