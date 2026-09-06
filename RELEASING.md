@@ -41,8 +41,8 @@ that exact commit. Replace the example version in both commands:
 ```sh
 git switch main
 git pull --ff-only origin main
-git tag --annotate v0.1.5 --message "Sponsor Shell v0.1.5"
-git push origin v0.1.5
+git tag --annotate v0.1.6 --message "Sponsor Shell v0.1.6"
+git push origin v0.1.6
 ```
 
 Do not move, recreate, or force-push a published release tag. npm package
