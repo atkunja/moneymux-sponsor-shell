@@ -2,7 +2,7 @@
   "name": "moneymux-sponsor-shell",
   "displayName": "MoneyMux Sponsor Shell",
   "description": "Opt-in, logo-enabled sponsored placements for Claude Code and Codex editor panels.",
-  "version": "0.1.0",
+  "version": "0.1.10",
   "publisher": "moneymux",
   "license": "MIT",
   "engines": {
