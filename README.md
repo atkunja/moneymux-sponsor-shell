@@ -52,6 +52,9 @@ sponsor-shell claude
 sponsor-shell bash
 ```
 
+When the wrapped command exits, Sponsor Shell preserves its exit status and
+closes the MoneyMux terminal session before removing the private tmux workspace.
+
 For Claude Code's disclosed, non-billable loading-tip placement, print the
 settings fragment for the currently eligible campaign:
 
