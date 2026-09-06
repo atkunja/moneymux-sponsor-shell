@@ -79,6 +79,10 @@ inventory but sends no impression or click event.
 Release `v0.1.10` includes `moneymux-sponsor-shell-0.1.10.vsix` in its GitHub
 release assets.
 
+```sh
+code --install-extension moneymux-sponsor-shell-0.1.10.vsix
+```
+
 The current source also offers opt-in protected harness sessions:
 
 ```sh
