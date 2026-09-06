@@ -1026,9 +1026,9 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
 ///
 /// `spinnerTipsOverride` puts an entry in the rotation Claude Code shows while a
 /// turn runs — the waiting state itself, which is the placement this product
-/// exists to sell. Claude Code renders it as `<label>: <text>`, so with a
-/// `Sponsored` label the disclosure is part of the line rather than an
-/// afterthought.
+/// exists to sell. Claude Code accepts an array of strings, so the `Sponsored:`
+/// disclosure is part of the string itself and cannot be separated from the
+/// sponsor name or destination.
 ///
 /// Deliberately a tip and not a `spinnerVerbs` entry. The verb slot says what
 /// Claude is doing — "Accomplishing", "Baking" — so putting a sponsor there
