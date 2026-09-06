@@ -13,7 +13,7 @@ Protected harness mode first shipped in 0.1.4. Install the current release, or
 build the current source if you are following unreleased changes:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.6
+npm install --global @moneymux/sponsor-shell@0.1.7
 sponsor-shell harness claude
 sponsor-shell harness codex
 sponsor-shell harness codex -- --help
@@ -69,9 +69,9 @@ it contains no prompt, transcript or token data.
 ## Optional sponsored spinner tip
 
 The waiting state itself. `spinnerTipsOverride` is a documented Claude Code
-setting that adds an entry to the tip rotation shown while a turn runs, and
-Claude Code renders it as `<label>: <text>` — so with a `Sponsored` label the
-disclosure is part of the line.
+setting that adds strings to the tip rotation shown while a turn runs. MoneyMux
+puts `Sponsored:` inside the custom tip string itself, so the required
+disclosure is part of the rendered line.
 
 ```sh
 ./target/release/sponsor-shell claude-spinner-setup

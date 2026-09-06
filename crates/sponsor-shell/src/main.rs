@@ -994,14 +994,7 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
                 tip to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
     };
-    let settings = serde_json::json!({
-        "spinnerTipsOverride": {
-            // Claude Code renders "<label>: <text>", so the disclosure travels
-            // with the line and cannot be separated from it.
-            "label": "Sponsored",
-            "tips": [tip],
-        },
-    });
+    let settings = claude_spinner_settings(&tip);
     format!(
         "Before you install this, know what it does:\n\
          \n\
@@ -1025,13 +1018,21 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
     )
 }
 
+fn claude_spinner_settings(tip: &str) -> serde_json::Value {
+    serde_json::json!({
+        "spinnerTipsOverride": {
+            "tips": [tip],
+        },
+    })
+}
+
 /// One sponsored spinner tip for Claude Code, or nothing.
 ///
 /// `spinnerTipsOverride` puts an entry in the rotation Claude Code shows while a
 /// turn runs — the waiting state itself, which is the placement this product
-/// exists to sell. Claude Code renders it as `<label>: <text>`, so with a
-/// `Sponsored` label the disclosure is part of the line rather than an
-/// afterthought.
+/// exists to sell. Claude Code accepts an array of strings, so the `Sponsored:`
+/// disclosure is part of the string itself and cannot be separated from the
+/// sponsor name or destination.
 ///
 /// Deliberately a tip and not a `spinnerVerbs` entry. The verb slot says what
 /// Claude is doing — "Accomplishing", "Baking" — so putting a sponsor there
@@ -1042,7 +1043,7 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
 /// Not billable and not trackable. Claude Code renders the rotation itself and
 /// tells nobody, so there is no impression, no click and no visibility signal
 /// here at all — unlike the sidecar, which can observe its own pane.
-fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
+fn claude_spinner_tip(creative: &AdCreative) -> Option<String> {
     if creative.id == "local-disabled" {
         return None;
     }
@@ -1057,11 +1058,7 @@ fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
     // destination always survive together rather than the URL being cut off.
     let sponsor = truncate_chars(sponsor, 60);
     let url = truncate_chars(&url, 200);
-    Some(serde_json::json!({
-        // Stable so Claude Code keeps this tip's show history across edits.
-        "id": "moneymux-sponsor",
-        "text": format!("{sponsor} — {url}"),
-    }))
+    Some(format!("Sponsored: {sponsor} — {url}"))
 }
 
 /// One sponsored status-line row for Claude Code, or nothing.
@@ -3888,9 +3885,8 @@ mod tests {
             url: "railway.app".into(),
             ..inactive_creative()
         };
-        let tip = claude_spinner_tip(&creative).unwrap();
-        assert_eq!(tip["id"], "moneymux-sponsor");
-        let text = tip["text"].as_str().unwrap();
+        let text = claude_spinner_tip(&creative).unwrap();
+        assert!(text.starts_with("Sponsored: "), "{text}");
         assert!(text.contains("Railway"), "{text}");
         // Forced https so a creative cannot put another scheme in the spinner.
         assert!(text.contains("https://railway.app"), "{text}");
@@ -3906,8 +3902,7 @@ mod tests {
             url: format!("example.test/{}", "p".repeat(400)),
             ..inactive_creative()
         };
-        let tip = claude_spinner_tip(&creative).unwrap();
-        let text = tip["text"].as_str().unwrap();
+        let text = claude_spinner_tip(&creative).unwrap();
         assert!(text.chars().count() <= 500, "{}", text.chars().count());
         // The destination must survive truncation, not be cut off entirely.
         assert!(text.contains("https://example.test/"), "{text}");
@@ -4074,7 +4069,31 @@ mod tests {
         // Quoted, so this checks the JSON key rather than the prose that
         // explains why the key is absent.
         assert!(!setup.contains("\"excludeDefault\""), "{setup}");
-        assert!(setup.contains("\"label\": \"Sponsored\""), "{setup}");
+        assert!(!setup.contains("\"label\""), "{setup}");
+        assert!(setup.contains("Sponsored: Railway"), "{setup}");
+    }
+
+    #[test]
+    fn spinner_settings_use_claudes_string_array_schema() {
+        let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
+        let tips = settings["spinnerTipsOverride"]["tips"]
+            .as_array()
+            .expect("tips array");
+
+        assert_eq!(tips.len(), 1);
+        assert!(tips[0].is_string());
+        assert_eq!(tips[0], "Sponsored: Railway — https://railway.app");
+    }
+
+    #[test]
+    fn spinner_settings_keep_defaults_without_unsupported_fields() {
+        let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
+        let override_config = settings["spinnerTipsOverride"]
+            .as_object()
+            .expect("spinner override object");
+
+        assert!(!override_config.contains_key("label"));
+        assert!(!override_config.contains_key("excludeDefault"));
     }
 
     // Someone installing this has to know it pays nothing before they see the

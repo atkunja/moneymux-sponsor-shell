@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.6
+npm install --global @moneymux/sponsor-shell@0.1.7
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
@@ -43,7 +43,9 @@ sponsor-shell claude-spinner-setup
 
 The command performs a session-bound inventory lookup, prints configuration
 only when an approved campaign is eligible, closes the lookup session, and
-never reports an impression or click for Claude's native tip rotation.
+never reports an impression or click for Claude's native tip rotation. The
+generated `tips` array contains strings accepted by Claude Code, with
+`Sponsored:` embedded in the displayed tip.
 
 ## Supported platforms
 
