@@ -34,6 +34,9 @@ sponsor-shell claude
 sponsor-shell bash
 ```
 
+Normal exit preserves the wrapped command's status, closes its remote MoneyMux
+terminal session, and only then removes the private tmux workspace.
+
 Claude Code can also show a disclosed, non-billable campaign in its native
 loading-tip rotation. Print the settings fragment with:
 
