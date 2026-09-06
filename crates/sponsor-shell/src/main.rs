@@ -1491,13 +1491,17 @@ impl RemoteTerminalSessionGuard {
     fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+
+    fn finish(&mut self) {
+        if let Some(session_id) = self.id.take() {
+            end_remote_terminal_session(&session_id);
+        }
+    }
 }
 
 impl Drop for RemoteTerminalSessionGuard {
     fn drop(&mut self) {
-        if let Some(session_id) = &self.id {
-            end_remote_terminal_session(session_id);
-        }
+        self.finish();
     }
 }
 
