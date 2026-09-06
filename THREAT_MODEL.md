@@ -40,6 +40,8 @@ remote installer. An absent or unsupported binary is a hard failure.
 The Rust client creates a dedicated `tmux` session and passes the selected
 command and arguments through shell quoting. Sponsor creative is rendered in a
 separate pane and is never inserted into the wrapped command's stdin.
+On normal command exit, that pane closes the remote terminal session before it
+destroys the tmux workspace, so teardown cannot strand an active API session.
 
 ### Native executable to MoneyMux API
 

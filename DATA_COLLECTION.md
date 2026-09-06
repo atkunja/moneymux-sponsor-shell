@@ -97,7 +97,8 @@ not print credential values.
 
 The basename is limited to 80 characters. The full executable path and command
 arguments are not sent. When the session ends, the client posts to
-`/api/terminal-sessions/{sessionId}/end`.
+`/api/terminal-sessions/{sessionId}/end` before it destroys the isolated tmux
+workspace. The end request carries no terminal input or output.
 
 ### Ad decision
 

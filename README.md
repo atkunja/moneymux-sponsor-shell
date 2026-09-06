@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.7
+npm install --global @moneymux/sponsor-shell@0.1.8
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
@@ -51,6 +51,9 @@ sponsor-shell codex
 sponsor-shell claude
 sponsor-shell bash
 ```
+
+When the wrapped command exits, Sponsor Shell preserves its exit status and
+closes the MoneyMux terminal session before removing the private tmux workspace.
 
 For Claude Code's disclosed, non-billable loading-tip placement, print the
 settings fragment for the currently eligible campaign:

@@ -460,6 +460,7 @@ fn help_lines() -> &'static [&'static str] {
         "  configure      Set the MoneyMux API base URL",
         "  status         Show the current local configuration",
         "  doctor         Run secret-free local diagnostics",
+        "  claude-spinner-setup  Print the current non-billable Claude loading-tip settings",
         "  install-tmux   Explicitly install the required tmux dependency",
         "  harness        Wrap Claude/Codex with a protected split pane and local hook hints",
         "  harness-hooks  Print optional hook JSON; does not install or replace settings",
@@ -1491,13 +1492,17 @@ impl RemoteTerminalSessionGuard {
     fn id(&self) -> Option<&str> {
         self.id.as_deref()
     }
+
+    fn finish(&mut self) {
+        if let Some(session_id) = self.id.take() {
+            end_remote_terminal_session(&session_id);
+        }
+    }
 }
 
 impl Drop for RemoteTerminalSessionGuard {
     fn drop(&mut self) {
-        if let Some(session_id) = &self.id {
-            end_remote_terminal_session(session_id);
-        }
+        self.finish();
     }
 }
 
@@ -1676,7 +1681,7 @@ fn run_sponsor_pane() -> Result<()> {
     let _guard = PaneGuard::enter()?;
     let mut activity = harness::Activity::from_env();
     let mut stdout = io::stdout();
-    let terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
+    let mut terminal_session = RemoteTerminalSessionGuard::start(&sponsor_wrapped_command());
     let mut ads_shown_this_session = 0_u64;
     let mut next_render_sequence = 1_u64;
     let mut last_reported_impression_at: Option<Instant> = None;
@@ -1831,6 +1836,7 @@ fn run_sponsor_pane() -> Result<()> {
                 }
 
                 if !tmux.app_pane_exists() || tmux.app_pane_dead() {
+                    terminal_session.finish();
                     tmux.kill_session().ok();
                     return Ok(());
                 }
@@ -2004,7 +2010,7 @@ fn run_tmux_shell(
     let mut app_parts = lifecycle_environment;
     app_parts.push(command.to_string());
     app_parts.extend(command_args.iter().cloned());
-    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), &session, app_parts);
+    let app_command = sponsor_app_command(&exit_file.to_string_lossy(), app_parts);
 
     run_tmux([
         "new-session",
@@ -2031,21 +2037,6 @@ fn run_tmux_shell(
         &cwd.to_string_lossy(),
         &app_command,
     ])?;
-    let kill_session_command = format!("kill-session -t {}", session);
-    run_tmux_allow_failure([
-        "set-hook",
-        "-t",
-        &session,
-        "pane-died",
-        &kill_session_command,
-    ]);
-    run_tmux_allow_failure([
-        "set-hook",
-        "-t",
-        &session,
-        "pane-exited",
-        &kill_session_command,
-    ]);
     run_tmux(["select-pane", "-t", &format!("{session}:0.1")])?;
 
     let attach_status = Command::new("tmux")
@@ -2063,12 +2054,11 @@ fn run_tmux_shell(
     Ok(exit_code)
 }
 
-fn sponsor_app_command(exit_file: &str, session: &str, app_parts: Vec<String>) -> String {
+fn sponsor_app_command(exit_file: &str, app_parts: Vec<String>) -> String {
     // tmux uses the user's default shell. In zsh, `status` is read-only.
     let exit_trap = format!(
-        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; tmux kill-session -t {}; exit \"$sponsor_exit_code\"",
+        "sponsor_exit_code=$?; printf \"%s\\n\" \"$sponsor_exit_code\" > {}; exit \"$sponsor_exit_code\"",
         shell_quote(exit_file),
-        shell_quote(session),
     );
     format!(
         // Catch (do not ignore) SIGINT in the supervisory shell. The wrapped
@@ -2214,14 +2204,9 @@ impl SponsorTmux {
     }
 
     fn app_pane_exists(&self) -> bool {
-        self.tmux_output([
-            "display-message",
-            "-p",
-            "-t",
-            &self.app_target(),
-            "#{pane_id}",
-        ])
-        .is_ok()
+        self.tmux_output(["list-panes", "-t", &self.session, "-F", "#{pane_index}"])
+            .ok()
+            .is_some_and(|output| output.lines().any(|line| line.trim() == "1"))
     }
 
     fn app_pane_dead(&self) -> bool {
@@ -3321,7 +3306,6 @@ mod tests {
             ));
             let command = sponsor_app_command(
                 &exit_file.to_string_lossy(),
-                "test-session",
                 vec!["/bin/sh".into(), "-c".into(), "exit 37".into()],
             );
             let output = Command::new(shell)
@@ -3333,6 +3317,14 @@ mod tests {
             assert_eq!(fs::read_to_string(&exit_file).unwrap(), "37\n");
             fs::remove_file(exit_file).unwrap();
         }
+    }
+
+    #[test]
+    fn app_exit_trap_leaves_session_teardown_to_the_sponsor_pane() {
+        let command = sponsor_app_command("/tmp/status", vec!["true".into()]);
+
+        assert!(command.contains("sponsor_exit_code"));
+        assert!(!command.contains("kill-session"));
     }
 
     #[test]
@@ -4052,6 +4044,28 @@ mod tests {
         assert!(end.starts_with("POST /api/terminal-sessions/session-refused/end HTTP/1.1\r\n"));
     }
 
+    #[test]
+    fn explicit_session_finish_is_idempotent() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server =
+            thread::spawn(move || serve_one_http_request(listener, "200 OK", r#"{"ok":true}"#));
+
+        with_linked_test_device(&base_url, || {
+            let mut session = RemoteTerminalSessionGuard {
+                id: Some("session-explicit".into()),
+            };
+            session.finish();
+            session.finish();
+        });
+        let request = server.join().unwrap();
+
+        assert!(
+            request.starts_with("POST /api/terminal-sessions/session-explicit/end HTTP/1.1\r\n")
+        );
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
@@ -4350,6 +4364,7 @@ mod tests {
             "configure",
             "status",
             "doctor",
+            "claude-spinner-setup",
             "install-tmux",
             "version",
         ] {

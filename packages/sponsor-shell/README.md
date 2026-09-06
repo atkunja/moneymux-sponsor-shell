@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.7
+npm install --global @moneymux/sponsor-shell@0.1.8
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
@@ -33,6 +33,9 @@ sponsor-shell codex
 sponsor-shell claude
 sponsor-shell bash
 ```
+
+Normal exit preserves the wrapped command's status, closes its remote MoneyMux
+terminal session, and only then removes the private tmux workspace.
 
 Claude Code can also show a disclosed, non-billable campaign in its native
 loading-tip rotation. Print the settings fragment with:

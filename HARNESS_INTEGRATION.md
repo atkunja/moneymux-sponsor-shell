@@ -13,7 +13,7 @@ Protected harness mode first shipped in 0.1.4. Install the current release, or
 build the current source if you are following unreleased changes:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.7
+npm install --global @moneymux/sponsor-shell@0.1.8
 sponsor-shell harness claude
 sponsor-shell harness codex
 sponsor-shell harness codex -- --help
@@ -62,7 +62,8 @@ silent successful no-ops within Sponsor Shell.
 
 To disable: remove only the Sponsor Shell entries you added, then stop the
 wrapped session. No global hook service or session log remains. The private
-socket directory is removed on normal wrapper exit. A force-killed wrapper may
+socket directory is removed on normal wrapper exit, after the remote terminal
+session is closed and before the tmux workspace is destroyed. A force-killed wrapper may
 leave an empty directory/socket inode in the operating system's temporary area;
 it contains no prompt, transcript or token data.
 
