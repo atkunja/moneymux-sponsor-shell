@@ -2,6 +2,10 @@
 
 All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
+## 0.1.10 - 2026-09-05
+
+### Added
+
 ## 0.1.9 - 2026-09-05
 
 ### Changed
