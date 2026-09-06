@@ -6,6 +6,9 @@ It complements the terminal client; it does not replace or wrap either agent.
 
 ## Install from a VSIX
 
+Download `moneymux-sponsor-shell-0.1.10.vsix` from the `v0.1.10` GitHub
+release, then:
+
 1. Install and link the public terminal client first.
 2. Install the MoneyMux VSIX in VS Code.
 3. Run **MoneyMux: Install Rich Editor Placement** from the Command Palette.

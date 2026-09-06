@@ -32,6 +32,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo deny check advisories bans licenses sources
 npm test --prefix packages/sponsor-shell
+npm test --prefix packages/vscode
 npm run release:check --prefix packages/sponsor-shell
 ```
 
@@ -41,8 +42,8 @@ that exact commit. Replace the example version in both commands:
 ```sh
 git switch main
 git pull --ff-only origin main
-git tag --annotate v0.1.9 --message "Sponsor Shell v0.1.9"
-git push origin v0.1.9
+git tag --annotate v0.1.10 --message "Sponsor Shell v0.1.10"
+git push origin v0.1.10
 ```
 
 Do not move, recreate, or force-push a published release tag. npm package
@@ -55,10 +56,10 @@ the GitHub release both succeed, verify the published package without relying
 on a repository checkout:
 
 ```sh
-npm view @moneymux/sponsor-shell@0.1.9 version dist.integrity repository.url
-npm exec --yes --package=@moneymux/sponsor-shell@0.1.9 -- sponsor-shell --version
+npm view @moneymux/sponsor-shell@0.1.10 version dist.integrity repository.url
+npm exec --yes --package=@moneymux/sponsor-shell@0.1.10 -- sponsor-shell --version
 SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
-  npm exec --yes --package=@moneymux/sponsor-shell@0.1.9 -- sponsor-shell doctor
+  npm exec --yes --package=@moneymux/sponsor-shell@0.1.10 -- sponsor-shell doctor
 ```
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one
@@ -68,6 +69,11 @@ the installed Claude Code accepts the merged settings without a validation
 error, its short-lived terminal session ends, and no impression or click is
 recorded. Finish with `unlink` and a second `doctor` run. Do not promote the
 package documentation or test device to the production API during this release.
+
+Install the release VSIX in a disposable VS Code profile and exercise install,
+status, refresh, and restore against current Claude Code and Codex extensions.
+Verify each backup digest, mode-600 permission, visible `Sponsored` label, logo
+fallback, and the absence of editor-placement impression or click events.
 
 ## Verify a GitHub release
 
