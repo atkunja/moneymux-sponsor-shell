@@ -70,6 +70,11 @@ error, its short-lived terminal session ends, and no impression or click is
 recorded. Finish with `unlink` and a second `doctor` run. Do not promote the
 package documentation or test device to the production API during this release.
 
+Install the release VSIX in a disposable VS Code profile and exercise install,
+status, refresh, and restore against current Claude Code and Codex extensions.
+Verify each backup digest, mode-600 permission, visible `Sponsored` label, logo
+fallback, and the absence of editor-placement impression or click events.
+
 ## Verify a GitHub release
 
 Download the release files, then verify their checksums:
