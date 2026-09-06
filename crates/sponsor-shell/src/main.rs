@@ -4122,10 +4122,10 @@ mod tests {
         let cost = setup
             .find("earns nothing")
             .expect("must say it earns nothing");
-        let config = setup.find("spinnerTipsOverride").expect("config printed");
+        let config = setup.find("spinnerVerbs").expect("config printed");
         assert!(cost < config, "the limit has to come first");
         assert!(
-            setup.contains("delete that `spinnerTipsOverride` key"),
+            setup.contains("delete that `spinnerVerbs` key"),
             "{setup}"
         );
     }
