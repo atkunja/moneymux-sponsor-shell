@@ -2031,21 +2031,6 @@ fn run_tmux_shell(
         &cwd.to_string_lossy(),
         &app_command,
     ])?;
-    let kill_session_command = format!("kill-session -t {}", session);
-    run_tmux_allow_failure([
-        "set-hook",
-        "-t",
-        &session,
-        "pane-died",
-        &kill_session_command,
-    ]);
-    run_tmux_allow_failure([
-        "set-hook",
-        "-t",
-        &session,
-        "pane-exited",
-        &kill_session_command,
-    ]);
     run_tmux(["select-pane", "-t", &format!("{session}:0.1")])?;
 
     let attach_status = Command::new("tmux")
