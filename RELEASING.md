@@ -32,6 +32,7 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked
 cargo deny check advisories bans licenses sources
 npm test --prefix packages/sponsor-shell
+npm test --prefix packages/vscode
 npm run release:check --prefix packages/sponsor-shell
 ```
 
