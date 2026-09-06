@@ -13,7 +13,7 @@ Protected harness mode first shipped in 0.1.4. Install the current release, or
 build the current source if you are following unreleased changes:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.7
+npm install --global @moneymux/sponsor-shell@0.1.8
 sponsor-shell harness claude
 sponsor-shell harness codex
 sponsor-shell harness codex -- --help
