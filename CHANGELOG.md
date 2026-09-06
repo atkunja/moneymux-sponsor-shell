@@ -16,6 +16,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
   SHA-256 digest and refuse unknown or changed bundle layouts.
 - Editor selections use a short-lived linked-device session and intentionally
   emit no impression or click events, so the surface cannot earn or charge.
+- Tagged releases now attach a versioned VSIX and include it in the signed
+  checksum manifest alongside the native and npm artifacts.
 
 ## 0.1.9 - 2026-09-05
 
