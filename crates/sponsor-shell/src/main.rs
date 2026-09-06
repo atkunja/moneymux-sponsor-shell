@@ -984,37 +984,33 @@ fn claude_status_line_setup(executable: &str) -> String {
     )
 }
 
-/// Print-only setup guidance for the sponsored spinner tip.
+/// Print-only setup guidance for the sponsored spinner verb.
 ///
 /// Prints the limits before the configuration, like the status-line setup. The
 /// honest ones here are that this placement earns nothing and cannot be
 /// measured, and that the creative is fixed at install time.
 fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
-    let Some(tip) = creative.and_then(claude_spinner_tip) else {
+    let Some(verb) = creative.and_then(claude_spinner_tip) else {
         return "No approved creative is available for this terminal, so there is no sponsored \
-                tip to install yet.\nTry again when campaign inventory is eligible.\n"
+                spinner message to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
     };
-    let settings = claude_spinner_settings(&tip);
+    let settings = claude_spinner_settings(&verb);
     format!(
         "Before you install this, know what it does:\n\
          \n\
-         - It adds one sponsored line to the tip rotation Claude Code shows\n\
-         \x20 while a turn runs. It does not replace the spinner verb, which\n\
-         \x20 describes what Claude is doing; an advertisement there would be\n\
-         \x20 pretending to be the model's own status.\n\
+         - It replaces Claude Code's rotating action verbs with one visibly\n\
+         \x20 disclosed sponsored message while a turn runs.\n\
          - It earns nothing. Claude Code renders the rotation itself and\n\
          \x20 reports nothing back, so there is no impression, no click and no\n\
          \x20 visibility signal. Earnings come from the sidecar.\n\
-         - `excludeDefault` is deliberately absent, so Claude Code's own tips\n\
-         \x20 keep showing alongside this one.\n\
          - The creative is fixed at install. Re-run this command to refresh it.\n\
          \n\
-         Merge into the `spinnerTipsOverride` key of your Claude settings:\n\
+         Merge into the `spinnerVerbs` key of your Claude settings:\n\
          \n\
          {}\n\
          \n\
-         To remove it, delete that `spinnerTipsOverride` key.\n",
+         To remove it, delete that `spinnerVerbs` key.\n",
         serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
     )
 }
