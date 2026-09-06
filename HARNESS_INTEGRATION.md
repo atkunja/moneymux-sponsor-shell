@@ -9,11 +9,11 @@ of two rows). Users can still move the divider themselves.
 
 ## Start a protected terminal session
 
-These commands ship in 0.1.4. Install it, or build the current source if you
-are following changes that are not in a release yet:
+Protected harness mode first shipped in 0.1.4. Install the current release, or
+build the current source if you are following unreleased changes:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.4
+npm install --global @moneymux/sponsor-shell@0.1.6
 sponsor-shell harness claude
 sponsor-shell harness codex
 sponsor-shell harness codex -- --help
