@@ -4073,6 +4073,18 @@ mod tests {
         assert!(setup.contains("Sponsored: Railway"), "{setup}");
     }
 
+    #[test]
+    fn spinner_settings_use_claudes_string_array_schema() {
+        let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
+        let tips = settings["spinnerTipsOverride"]["tips"]
+            .as_array()
+            .expect("tips array");
+
+        assert_eq!(tips.len(), 1);
+        assert!(tips[0].is_string());
+        assert_eq!(tips[0], "Sponsored: Railway — https://railway.app");
+    }
+
     // Someone installing this has to know it pays nothing before they see the
     // configuration, not after wondering why no earnings appear.
     #[test]
