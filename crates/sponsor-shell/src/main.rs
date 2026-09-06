@@ -4095,14 +4095,17 @@ mod tests {
     }
 
     #[test]
-    fn spinner_settings_keep_defaults_without_unsupported_fields() {
+    fn spinner_settings_replace_claudes_default_action_verbs() {
         let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
-        let override_config = settings["spinnerTipsOverride"]
+        let verb_config = settings["spinnerVerbs"]
             .as_object()
-            .expect("spinner override object");
+            .expect("spinner verb object");
 
-        assert!(!override_config.contains_key("label"));
-        assert!(!override_config.contains_key("excludeDefault"));
+        assert_eq!(
+            verb_config.get("mode").and_then(|value| value.as_str()),
+            Some("replace")
+        );
+        assert!(!verb_config.contains_key("label"));
     }
 
     // Someone installing this has to know it pays nothing before they see the
