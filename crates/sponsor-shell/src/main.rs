@@ -1042,7 +1042,7 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
 /// Not billable and not trackable. Claude Code renders the rotation itself and
 /// tells nobody, so there is no impression, no click and no visibility signal
 /// here at all — unlike the sidecar, which can observe its own pane.
-fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
+fn claude_spinner_tip(creative: &AdCreative) -> Option<String> {
     if creative.id == "local-disabled" {
         return None;
     }
@@ -1057,11 +1057,7 @@ fn claude_spinner_tip(creative: &AdCreative) -> Option<serde_json::Value> {
     // destination always survive together rather than the URL being cut off.
     let sponsor = truncate_chars(sponsor, 60);
     let url = truncate_chars(&url, 200);
-    Some(serde_json::json!({
-        // Stable so Claude Code keeps this tip's show history across edits.
-        "id": "moneymux-sponsor",
-        "text": format!("{sponsor} — {url}"),
-    }))
+    Some(format!("Sponsored: {sponsor} — {url}"))
 }
 
 /// One sponsored status-line row for Claude Code, or nothing.
@@ -3888,9 +3884,8 @@ mod tests {
             url: "railway.app".into(),
             ..inactive_creative()
         };
-        let tip = claude_spinner_tip(&creative).unwrap();
-        assert_eq!(tip["id"], "moneymux-sponsor");
-        let text = tip["text"].as_str().unwrap();
+        let text = claude_spinner_tip(&creative).unwrap();
+        assert!(text.starts_with("Sponsored: "), "{text}");
         assert!(text.contains("Railway"), "{text}");
         // Forced https so a creative cannot put another scheme in the spinner.
         assert!(text.contains("https://railway.app"), "{text}");
@@ -3906,8 +3901,7 @@ mod tests {
             url: format!("example.test/{}", "p".repeat(400)),
             ..inactive_creative()
         };
-        let tip = claude_spinner_tip(&creative).unwrap();
-        let text = tip["text"].as_str().unwrap();
+        let text = claude_spinner_tip(&creative).unwrap();
         assert!(text.chars().count() <= 500, "{}", text.chars().count());
         // The destination must survive truncation, not be cut off entirely.
         assert!(text.contains("https://example.test/"), "{text}");
