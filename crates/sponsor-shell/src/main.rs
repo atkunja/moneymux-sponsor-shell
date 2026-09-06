@@ -4000,6 +4000,31 @@ mod tests {
         assert!(!request.contains("/api/ad-decision"));
     }
 
+    #[test]
+    fn spinner_setup_closes_session_when_decision_is_refused() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let start = serve_http_request(&listener, "200 OK", r#"{"id":"session-refused"}"#);
+            let decision = serve_http_request(
+                &listener,
+                "400 Bad Request",
+                r#"{"error":"no eligible campaign"}"#,
+            );
+            let end = serve_http_request(&listener, "200 OK", r#"{"ok":true}"#);
+            [start, decision, end]
+        });
+
+        let creative = with_linked_test_device(&base_url, load_claude_spinner_creative);
+        let [start, decision, end] = server.join().unwrap();
+
+        assert!(creative.is_none());
+        assert!(start.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+        assert!(decision.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(end.starts_with("POST /api/terminal-sessions/session-refused/end HTTP/1.1\r\n"));
+    }
+
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
     // an advertisement up as the model's own status, so the config must never
     // touch it, and must not silence Claude Code's own tips either.
