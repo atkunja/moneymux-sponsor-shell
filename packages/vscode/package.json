@@ -1,0 +1,73 @@
+{
+  "name": "moneymux-sponsor-shell",
+  "displayName": "MoneyMux Sponsor Shell",
+  "description": "Opt-in, logo-enabled sponsored placements for Claude Code and Codex editor panels.",
+  "version": "0.1.0",
+  "publisher": "moneymux",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.94.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "moneymux",
+    "claude",
+    "codex",
+    "sponsor"
+  ],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:moneymux.installEditorPlacement",
+    "onCommand:moneymux.refreshEditorPlacement",
+    "onCommand:moneymux.restoreEditorPlacement",
+    "onCommand:moneymux.editorPlacementStatus"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "moneymux.installEditorPlacement",
+        "title": "MoneyMux: Install Rich Editor Placement"
+      },
+      {
+        "command": "moneymux.refreshEditorPlacement",
+        "title": "MoneyMux: Refresh Sponsored Creative"
+      },
+      {
+        "command": "moneymux.restoreEditorPlacement",
+        "title": "MoneyMux: Restore Claude Code and Codex"
+      },
+      {
+        "command": "moneymux.editorPlacementStatus",
+        "title": "MoneyMux: Show Editor Placement Status"
+      }
+    ],
+    "configuration": {
+      "title": "MoneyMux Sponsor Shell",
+      "properties": {
+        "moneymux.editorPlacement.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Allow the explicitly installed sponsored card to appear while supported editor agents are working."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "node --test",
+    "package": "vsce package --no-dependencies"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "3.6.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atkunja/moneymux-sponsor-shell.git"
+  },
+  "homepage": "https://moneymux.com",
+  "bugs": {
+    "url": "https://github.com/atkunja/moneymux-sponsor-shell/issues"
+  }
+}
