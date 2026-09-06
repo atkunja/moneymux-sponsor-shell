@@ -4085,6 +4085,17 @@ mod tests {
         assert_eq!(tips[0], "Sponsored: Railway — https://railway.app");
     }
 
+    #[test]
+    fn spinner_settings_keep_defaults_without_unsupported_fields() {
+        let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
+        let override_config = settings["spinnerTipsOverride"]
+            .as_object()
+            .expect("spinner override object");
+
+        assert!(!override_config.contains_key("label"));
+        assert!(!override_config.contains_key("excludeDefault"));
+    }
+
     // Someone installing this has to know it pays nothing before they see the
     // configuration, not after wondering why no earnings appear.
     #[test]
