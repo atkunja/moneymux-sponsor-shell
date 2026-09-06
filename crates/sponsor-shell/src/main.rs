@@ -1024,19 +1024,12 @@ fn claude_spinner_settings(tip: &str) -> serde_json::Value {
     })
 }
 
-/// One sponsored spinner tip for Claude Code, or nothing.
+/// One disclosed sponsored spinner verb for Claude Code, or nothing.
 ///
-/// `spinnerTipsOverride` puts an entry in the rotation Claude Code shows while a
-/// turn runs — the waiting state itself, which is the placement this product
-/// exists to sell. Claude Code accepts an array of strings, so the `Sponsored:`
-/// disclosure is part of the string itself and cannot be separated from the
-/// sponsor name or destination.
-///
-/// Deliberately a tip and not a `spinnerVerbs` entry. The verb slot says what
-/// Claude is doing — "Accomplishing", "Baking" — so putting a sponsor there
-/// dresses an advertisement up as the model's own status. A competitor does
-/// exactly that. It reads as native because it is pretending to be native, and
-/// this product discloses instead.
+/// `spinnerVerbs` with replacement mode makes the sponsored message occupy the
+/// same waiting-state surface as Claude's rotating action words. The rendered
+/// string begins with `Sponsored:` so it remains an advertisement rather than
+/// claiming to describe what the model is doing.
 ///
 /// Not billable and not trackable. Claude Code renders the rotation itself and
 /// tells nobody, so there is no impression, no click and no visibility signal
@@ -1051,9 +1044,8 @@ fn claude_spinner_verb(creative: &AdCreative) -> Option<String> {
         return None;
     }
     let url = canonical_https_url(&creative.url);
-    // Claude Code caps tip text at 500 characters and collapses whitespace
-    // itself. Bound both parts well inside that so the sponsor and its
-    // destination always survive together rather than the URL being cut off.
+    // Keep the native waiting-state row compact so the disclosure, sponsor and
+    // destination survive together on ordinary terminal widths.
     let sponsor = truncate_chars(sponsor, 60);
     let url = truncate_chars(&url, 200);
     Some(format!("Sponsored: {sponsor} — {url}"))
