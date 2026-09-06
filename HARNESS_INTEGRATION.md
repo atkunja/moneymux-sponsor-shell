@@ -62,7 +62,8 @@ silent successful no-ops within Sponsor Shell.
 
 To disable: remove only the Sponsor Shell entries you added, then stop the
 wrapped session. No global hook service or session log remains. The private
-socket directory is removed on normal wrapper exit. A force-killed wrapper may
+socket directory is removed on normal wrapper exit, after the remote terminal
+session is closed and before the tmux workspace is destroyed. A force-killed wrapper may
 leave an empty directory/socket inode in the operating system's temporary area;
 it contains no prompt, transcript or token data.
 
