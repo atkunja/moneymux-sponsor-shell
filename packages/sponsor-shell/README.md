@@ -43,7 +43,9 @@ sponsor-shell claude-spinner-setup
 
 The command performs a session-bound inventory lookup, prints configuration
 only when an approved campaign is eligible, closes the lookup session, and
-never reports an impression or click for Claude's native tip rotation.
+never reports an impression or click for Claude's native tip rotation. The
+generated `tips` array contains strings accepted by Claude Code, with
+`Sponsored:` embedded in the displayed tip.
 
 ## Supported platforms
 
