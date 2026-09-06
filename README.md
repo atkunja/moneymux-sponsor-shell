@@ -63,6 +63,8 @@ The command selects approved inventory but never reports a paid impression or
 click; Claude Code does not expose whether its own tip was visible. The lookup
 uses and immediately closes a short-lived MoneyMux terminal session so the
 decision follows the same eligibility contract as interactive placements.
+Its JSON uses Claude Code's documented string-array format and prefixes the tip
+itself with `Sponsored:`.
 
 The current source also offers opt-in protected harness sessions:
 
