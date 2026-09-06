@@ -996,9 +996,6 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
     };
     let settings = serde_json::json!({
         "spinnerTipsOverride": {
-            // Claude Code renders "<label>: <text>", so the disclosure travels
-            // with the line and cannot be separated from it.
-            "label": "Sponsored",
             "tips": [tip],
         },
     });
@@ -4068,7 +4065,8 @@ mod tests {
         // Quoted, so this checks the JSON key rather than the prose that
         // explains why the key is absent.
         assert!(!setup.contains("\"excludeDefault\""), "{setup}");
-        assert!(setup.contains("\"label\": \"Sponsored\""), "{setup}");
+        assert!(!setup.contains("\"label\""), "{setup}");
+        assert!(setup.contains("Sponsored: Railway"), "{setup}");
     }
 
     // Someone installing this has to know it pays nothing before they see the
