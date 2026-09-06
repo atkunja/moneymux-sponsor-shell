@@ -3237,6 +3237,10 @@ mod tests {
     }
 
     fn serve_one_http_request(listener: TcpListener, status: &str, response_body: &str) -> String {
+        serve_http_request(&listener, status, response_body)
+    }
+
+    fn serve_http_request(listener: &TcpListener, status: &str, response_body: &str) -> String {
         let (mut stream, _) = listener.accept().unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
