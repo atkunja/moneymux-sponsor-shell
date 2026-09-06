@@ -3324,6 +3324,14 @@ mod tests {
     }
 
     #[test]
+    fn app_exit_trap_leaves_session_teardown_to_the_sponsor_pane() {
+        let command = sponsor_app_command("/tmp/status", vec!["true".into()]);
+
+        assert!(command.contains("sponsor_exit_code"));
+        assert!(!command.contains("kill-session"));
+    }
+
+    #[test]
     fn ad_expands_on_long_user_idle_regardless_of_mode() {
         let delay = Duration::from_secs(30);
         // User idle past the delay → expand, whether or not the working mode is on.
