@@ -4,6 +4,12 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 ## Unreleased
 
+### Fixed
+
+- Normal wrapped commands now close their remote terminal session before the
+  tmux workspace is destroyed. Previously the app pane killed tmux first, so
+  the sponsor pane could not send its best-effort session-end request.
+
 ## 0.1.7 - 2026-09-05
 
 ### Fixed
