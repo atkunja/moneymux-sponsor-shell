@@ -4097,6 +4097,15 @@ mod tests {
         assert!(!verb_config.contains_key("label"));
     }
 
+    #[test]
+    fn spinner_settings_do_not_install_a_separate_tip_override() {
+        let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
+        let root = settings.as_object().expect("settings object");
+
+        assert_eq!(root.len(), 1);
+        assert!(!root.contains_key("spinnerTipsOverride"));
+    }
+
     // Someone installing this has to know it pays nothing before they see the
     // configuration, not after wondering why no earnings appear.
     #[test]
@@ -4113,10 +4122,7 @@ mod tests {
             .expect("must say it earns nothing");
         let config = setup.find("spinnerVerbs").expect("config printed");
         assert!(cost < config, "the limit has to come first");
-        assert!(
-            setup.contains("delete that `spinnerVerbs` key"),
-            "{setup}"
-        );
+        assert!(setup.contains("delete that `spinnerVerbs` key"), "{setup}");
     }
 
     #[test]
