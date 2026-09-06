@@ -4066,11 +4066,8 @@ mod tests {
         );
     }
 
-    // The verb slot says what Claude is doing. Putting a sponsor there dresses
-    // an advertisement up as the model's own status, so the config must never
-    // touch it, and must not silence Claude Code's own tips either.
     #[test]
-    fn spinner_setup_uses_the_tip_slot_and_keeps_the_built_in_tips() {
+    fn spinner_setup_replaces_the_action_verb_with_a_disclosed_sponsor() {
         let creative = AdCreative {
             id: "decision-1".into(),
             sponsor: "Railway".into(),
@@ -4078,11 +4075,9 @@ mod tests {
             ..inactive_creative()
         };
         let setup = claude_spinner_setup(Some(&creative));
-        assert!(setup.contains("\"spinnerTipsOverride\""), "{setup}");
-        assert!(!setup.contains("spinnerVerbs"), "{setup}");
-        // Quoted, so this checks the JSON key rather than the prose that
-        // explains why the key is absent.
-        assert!(!setup.contains("\"excludeDefault\""), "{setup}");
+        assert!(setup.contains("\"spinnerVerbs\""), "{setup}");
+        assert!(!setup.contains("spinnerTipsOverride"), "{setup}");
+        assert!(setup.contains("\"mode\": \"replace\""), "{setup}");
         assert!(!setup.contains("\"label\""), "{setup}");
         assert!(setup.contains("Sponsored: Railway"), "{setup}");
     }
