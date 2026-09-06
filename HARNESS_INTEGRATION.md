@@ -9,11 +9,11 @@ of two rows). Users can still move the divider themselves.
 
 ## Start a protected terminal session
 
-These commands ship in 0.1.4. Install it, or build the current source if you
-are following changes that are not in a release yet:
+Protected harness mode first shipped in 0.1.4. Install the current release, or
+build the current source if you are following unreleased changes:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.4
+npm install --global @moneymux/sponsor-shell@0.1.6
 sponsor-shell harness claude
 sponsor-shell harness codex
 sponsor-shell harness codex -- --help
@@ -79,7 +79,9 @@ disclosure is part of the line.
 
 Print-only. It emits the JSON to merge into your own settings and never writes a
 file. A linked terminal asks MoneyMux for current eligible inventory when the
-command runs; an unlinked terminal can still use an injected local creative.
+command runs. That lookup uses a short-lived setup session required by the
+marketplace decision contract and closes it immediately afterward. An unlinked
+terminal can still use an injected local creative.
 
 Two deliberate refusals. It does **not** use `spinnerVerbs`: that slot says what
 Claude is doing — "Accomplishing", "Baking" — so a sponsor there dresses an

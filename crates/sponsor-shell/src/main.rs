@@ -1118,10 +1118,11 @@ fn load_claude_spinner_creative() -> Option<AdCreative> {
     // A decision is not an impression. This fetch selects current eligible
     // inventory, but the print-only setup path never reports visibility or a
     // click because Claude owns the tip rotation and exposes neither signal.
-    select_claude_spinner_creative(
-        load_remote_ad_creative(Layout::current(), None, None, 0),
-        load_ad_creative(),
-    )
+    let terminal_session = RemoteTerminalSessionGuard::start("claude-spinner-setup");
+    let remote = terminal_session.id().and_then(|session_id| {
+        load_remote_ad_creative(Layout::current(), Some(session_id), None, 0)
+    });
+    select_claude_spinner_creative(remote, load_ad_creative())
 }
 
 fn select_claude_spinner_creative(
@@ -3236,6 +3237,10 @@ mod tests {
     }
 
     fn serve_one_http_request(listener: TcpListener, status: &str, response_body: &str) -> String {
+        serve_http_request(&listener, status, response_body)
+    }
+
+    fn serve_http_request(listener: &TcpListener, status: &str, response_body: &str) -> String {
         let (mut stream, _) = listener.accept().unwrap();
         stream
             .set_read_timeout(Some(Duration::from_secs(2)))
@@ -3278,6 +3283,32 @@ mod tests {
         );
         stream.write_all(response.as_bytes()).unwrap();
         String::from_utf8(request).unwrap()
+    }
+
+    fn with_linked_test_device<T>(base_url: &str, action: impl FnOnce() -> T) -> T {
+        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
+        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
+        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
+        env::set_var(SPONSOR_API_BASE_ENV, base_url);
+        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
+        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
+
+        let result = action();
+
+        match previous_api {
+            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
+            None => env::remove_var(SPONSOR_API_BASE_ENV),
+        }
+        match previous_device {
+            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
+        }
+        match previous_token {
+            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
+            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
+        }
+
+        result
     }
 
     #[test]
@@ -3922,43 +3953,108 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         let server = thread::spawn(move || {
-            serve_one_http_request(
-                listener,
+            let start = serve_http_request(&listener, "200 OK", r#"{"id":"session-spinner"}"#);
+            let decision = serve_http_request(
+                &listener,
                 "200 OK",
                 r#"{"adDecisionId":"decision-spinner","decisionToken":"signed.token","creative":{"enabled":true,"sponsor":"Current campaign","url":"https://campaign.example"}}"#,
-            )
+            );
+            let end = serve_http_request(&listener, "200 OK", r#"{"ok":true}"#);
+            [start, decision, end]
         });
 
-        let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
-        let previous_device = env::var(SPONSOR_DEVICE_ID_ENV).ok();
-        let previous_token = env::var(SPONSOR_DEVICE_TOKEN_ENV).ok();
-        env::set_var(SPONSOR_API_BASE_ENV, &base_url);
-        env::set_var(SPONSOR_DEVICE_ID_ENV, "device-spinner");
-        env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
-
-        let creative = load_claude_spinner_creative().unwrap();
-        let request = server.join().unwrap();
-
-        match previous_api {
-            Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
-            None => env::remove_var(SPONSOR_API_BASE_ENV),
-        }
-        match previous_device {
-            Some(value) => env::set_var(SPONSOR_DEVICE_ID_ENV, value),
-            None => env::remove_var(SPONSOR_DEVICE_ID_ENV),
-        }
-        match previous_token {
-            Some(value) => env::set_var(SPONSOR_DEVICE_TOKEN_ENV, value),
-            None => env::remove_var(SPONSOR_DEVICE_TOKEN_ENV),
-        }
+        let creative =
+            with_linked_test_device(&base_url, || load_claude_spinner_creative().unwrap());
+        let [start, decision, end] = server.join().unwrap();
 
         assert_eq!(creative.sponsor, "Current campaign");
-        assert!(request.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
-        assert!(request
+        assert!(start.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+        assert!(start.contains(r#""deviceId":"device-spinner""#));
+        assert!(start.contains(r#""command":"claude-spinner-setup""#));
+        assert!(decision.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(decision.contains(r#""sessionId":"session-spinner""#));
+        assert!(decision
             .to_ascii_lowercase()
             .contains("\r\nauthorization: bearer ssdev_spinner_token\r\n"));
-        assert!(request.contains(r#""placement":"prompt_boundary""#));
-        assert!(!request.contains("/api/events/"));
+        assert!(decision.contains(r#""placement":"prompt_boundary""#));
+        assert!(end.starts_with("POST /api/terminal-sessions/session-spinner/end HTTP/1.1\r\n"));
+        assert!([start, decision, end]
+            .iter()
+            .all(|request| !request.contains("/api/events/")));
+    }
+
+    #[test]
+    fn spinner_setup_skips_decision_when_session_start_is_refused() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(listener, "401 Unauthorized", r#"{"error":"unauthorized"}"#)
+        });
+
+        let creative = with_linked_test_device(&base_url, load_claude_spinner_creative);
+        let request = server.join().unwrap();
+
+        assert!(creative.is_none());
+        assert!(request.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+        assert!(!request.contains("/api/ad-decision"));
+    }
+
+    #[test]
+    fn spinner_setup_keeps_local_fallback_when_session_start_fails() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            serve_one_http_request(listener, "503 Service Unavailable", r#"{"error":"later"}"#)
+        });
+        let ad_file = env::temp_dir().join(format!(
+            "sponsor-shell-spinner-fallback-{}.json",
+            std::process::id()
+        ));
+        fs::write(
+            &ad_file,
+            r#"{"enabled":true,"sponsor":"Local fallback","url":"https://local.example"}"#,
+        )
+        .unwrap();
+        let previous_ad_file = env::var(SPONSOR_AD_FILE_ENV).ok();
+        env::set_var(SPONSOR_AD_FILE_ENV, &ad_file);
+
+        let creative = with_linked_test_device(&base_url, load_claude_spinner_creative).unwrap();
+        let request = server.join().unwrap();
+
+        match previous_ad_file {
+            Some(value) => env::set_var(SPONSOR_AD_FILE_ENV, value),
+            None => env::remove_var(SPONSOR_AD_FILE_ENV),
+        }
+        fs::remove_file(ad_file).unwrap();
+        assert_eq!(creative.sponsor, "Local fallback");
+        assert!(request.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+    }
+
+    #[test]
+    fn spinner_setup_closes_session_when_decision_is_refused() {
+        let _environment = lock_process_environment();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let base_url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let start = serve_http_request(&listener, "200 OK", r#"{"id":"session-refused"}"#);
+            let decision = serve_http_request(
+                &listener,
+                "400 Bad Request",
+                r#"{"error":"no eligible campaign"}"#,
+            );
+            let end = serve_http_request(&listener, "200 OK", r#"{"ok":true}"#);
+            [start, decision, end]
+        });
+
+        let creative = with_linked_test_device(&base_url, load_claude_spinner_creative);
+        let [start, decision, end] = server.join().unwrap();
+
+        assert!(creative.is_none());
+        assert!(start.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+        assert!(decision.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(end.starts_with("POST /api/terminal-sessions/session-refused/end HTTP/1.1\r\n"));
     }
 
     // The verb slot says what Claude is doing. Putting a sponsor there dresses

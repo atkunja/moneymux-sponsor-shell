@@ -46,6 +46,9 @@ separate pane and is never inserted into the wrapped command's stdin.
 Only the fields enumerated in `DATA_COLLECTION.md` may cross this boundary.
 Requests use HTTPS except for explicit local-development hosts. The device token
 is placed in the authorization header only after URL validation succeeds.
+One-off Claude spinner inventory lookup creates and closes a terminal session
+because the marketplace requires decisions to be session-bound; that path does
+not emit impression or click evidence.
 
 ### Harness hooks to local activity labels
 

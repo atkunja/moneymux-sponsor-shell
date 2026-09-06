@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.5
+npm install --global @moneymux/sponsor-shell@0.1.6
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
@@ -60,7 +60,9 @@ sponsor-shell claude-spinner-setup
 ```
 
 The command selects approved inventory but never reports a paid impression or
-click; Claude Code does not expose whether its own tip was visible.
+click; Claude Code does not expose whether its own tip was visible. The lookup
+uses and immediately closes a short-lived MoneyMux terminal session so the
+decision follows the same eligibility contract as interactive placements.
 
 The current source also offers opt-in protected harness sessions:
 
