@@ -62,9 +62,11 @@ SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
 ```
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one
-interactive shell session, `unlink`, and a second `doctor` run. Do not promote
-the package documentation or test device to the production API during this
-release.
+interactive shell session, and `claude-spinner-setup`. Confirm the setup command
+prints a disclosed `spinnerTipsOverride` entry, its short-lived terminal session
+ends, and no impression or click is recorded. Finish with `unlink` and a second
+`doctor` run. Do not promote the package documentation or test device to the
+production API during this release.
 
 ## Verify a GitHub release
 
