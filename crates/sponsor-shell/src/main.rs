@@ -994,11 +994,7 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
                 tip to install yet.\nTry again when campaign inventory is eligible.\n"
             .to_string();
     };
-    let settings = serde_json::json!({
-        "spinnerTipsOverride": {
-            "tips": [tip],
-        },
-    });
+    let settings = claude_spinner_settings(&tip);
     format!(
         "Before you install this, know what it does:\n\
          \n\
@@ -1020,6 +1016,14 @@ fn claude_spinner_setup(creative: Option<&AdCreative>) -> String {
          To remove it, delete that `spinnerTipsOverride` key.\n",
         serde_json::to_string_pretty(&settings).unwrap_or_else(|_| "{}".to_string())
     )
+}
+
+fn claude_spinner_settings(tip: &str) -> serde_json::Value {
+    serde_json::json!({
+        "spinnerTipsOverride": {
+            "tips": [tip],
+        },
+    })
 }
 
 /// One sponsored spinner tip for Claude Code, or nothing.
