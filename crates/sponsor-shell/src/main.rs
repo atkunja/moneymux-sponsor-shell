@@ -460,6 +460,7 @@ fn help_lines() -> &'static [&'static str] {
         "  configure      Set the MoneyMux API base URL",
         "  status         Show the current local configuration",
         "  doctor         Run secret-free local diagnostics",
+        "  claude-spinner-setup  Print the current non-billable Claude loading-tip settings",
         "  install-tmux   Explicitly install the required tmux dependency",
         "  harness        Wrap Claude/Codex with a protected split pane and local hook hints",
         "  harness-hooks  Print optional hook JSON; does not install or replace settings",
@@ -4369,6 +4370,7 @@ mod tests {
             "configure",
             "status",
             "doctor",
+            "claude-spinner-setup",
             "install-tmux",
             "version",
         ] {
