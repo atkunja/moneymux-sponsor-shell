@@ -55,10 +55,10 @@ the GitHub release both succeed, verify the published package without relying
 on a repository checkout:
 
 ```sh
-npm view @moneymux/sponsor-shell@0.1.5 version dist.integrity repository.url
-npm exec --yes --package=@moneymux/sponsor-shell@0.1.5 -- sponsor-shell --version
+npm view @moneymux/sponsor-shell@0.1.6 version dist.integrity repository.url
+npm exec --yes --package=@moneymux/sponsor-shell@0.1.6 -- sponsor-shell --version
 SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
-  npm exec --yes --package=@moneymux/sponsor-shell@0.1.5 -- sponsor-shell doctor
+  npm exec --yes --package=@moneymux/sponsor-shell@0.1.6 -- sponsor-shell doctor
 ```
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one
