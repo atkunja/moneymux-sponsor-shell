@@ -3927,11 +3927,18 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let base_url = format!("http://{}", listener.local_addr().unwrap());
         let server = thread::spawn(move || {
-            serve_one_http_request(
-                listener,
+            let start = serve_http_request(
+                &listener,
+                "200 OK",
+                r#"{"id":"session-spinner"}"#,
+            );
+            let decision = serve_http_request(
+                &listener,
                 "200 OK",
                 r#"{"adDecisionId":"decision-spinner","decisionToken":"signed.token","creative":{"enabled":true,"sponsor":"Current campaign","url":"https://campaign.example"}}"#,
-            )
+            );
+            let end = serve_http_request(&listener, "200 OK", r#"{"ok":true}"#);
+            [start, decision, end]
         });
 
         let previous_api = env::var(SPONSOR_API_BASE_ENV).ok();
@@ -3942,7 +3949,7 @@ mod tests {
         env::set_var(SPONSOR_DEVICE_TOKEN_ENV, "ssdev_spinner_token");
 
         let creative = load_claude_spinner_creative().unwrap();
-        let request = server.join().unwrap();
+        let [start, decision, end] = server.join().unwrap();
 
         match previous_api {
             Some(value) => env::set_var(SPONSOR_API_BASE_ENV, value),
@@ -3958,12 +3965,21 @@ mod tests {
         }
 
         assert_eq!(creative.sponsor, "Current campaign");
-        assert!(request.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
-        assert!(request
+        assert!(start.starts_with("POST /api/terminal-sessions HTTP/1.1\r\n"));
+        assert!(start.contains(r#""deviceId":"device-spinner""#));
+        assert!(start.contains(r#""command":"claude-spinner-setup""#));
+        assert!(decision.starts_with("POST /api/ad-decision HTTP/1.1\r\n"));
+        assert!(decision.contains(r#""sessionId":"session-spinner""#));
+        assert!(decision
             .to_ascii_lowercase()
             .contains("\r\nauthorization: bearer ssdev_spinner_token\r\n"));
-        assert!(request.contains(r#""placement":"prompt_boundary""#));
-        assert!(!request.contains("/api/events/"));
+        assert!(decision.contains(r#""placement":"prompt_boundary""#));
+        assert!(end.starts_with(
+            "POST /api/terminal-sessions/session-spinner/end HTTP/1.1\r\n"
+        ));
+        assert!([start, decision, end]
+            .iter()
+            .all(|request| !request.contains("/api/events/")));
     }
 
     // The verb slot says what Claude is doing. Putting a sponsor there dresses
