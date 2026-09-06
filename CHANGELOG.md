@@ -8,6 +8,8 @@ All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
 - An opt-in VS Code companion can place a compact sponsored card beside Claude
   Code's active work indicator after an explicit, reversible install command.
+- The same companion supports the official Codex VS Code extension and follows
+  its current hashed entry bundle instead of assuming a fixed asset name.
 
 ## 0.1.9 - 2026-09-05
 
