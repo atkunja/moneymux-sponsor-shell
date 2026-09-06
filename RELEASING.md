@@ -63,7 +63,7 @@ SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one
 interactive shell session, and `claude-spinner-setup`. Confirm the setup command
-prints a disclosed `spinnerTipsOverride` entry whose `tips` values are strings,
+prints a disclosed `spinnerVerbs` replacement whose `verbs` values are strings,
 the installed Claude Code accepts the merged settings without a validation
 error, its short-lived terminal session ends, and no impression or click is
 recorded. Finish with `unlink` and a second `doctor` run. Do not promote the
