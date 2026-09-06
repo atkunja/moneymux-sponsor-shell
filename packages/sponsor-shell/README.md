@@ -8,7 +8,7 @@ inventory. The complete Rust client and npm launcher source are public at
 ## Install
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.8
+npm install --global @moneymux/sponsor-shell@0.1.9
 ```
 
 Then connect the terminal to your MoneyMux developer account. For staging:
@@ -38,7 +38,7 @@ Normal exit preserves the wrapped command's status, closes its remote MoneyMux
 terminal session, and only then removes the private tmux workspace.
 
 Claude Code can also show a disclosed, non-billable campaign in its native
-loading-tip rotation. Print the settings fragment with:
+action-verb spinner. Print the settings fragment with:
 
 ```sh
 sponsor-shell claude-spinner-setup
@@ -46,9 +46,9 @@ sponsor-shell claude-spinner-setup
 
 The command performs a session-bound inventory lookup, prints configuration
 only when an approved campaign is eligible, closes the lookup session, and
-never reports an impression or click for Claude's native tip rotation. The
-generated `tips` array contains strings accepted by Claude Code, with
-`Sponsored:` embedded in the displayed tip.
+never reports an impression or click for Claude's native spinner. The generated
+`spinnerVerbs` configuration uses replacement mode and embeds `Sponsored:` in
+the only displayed spinner string.
 
 ## Supported platforms
 

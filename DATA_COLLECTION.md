@@ -117,8 +117,8 @@ current eligible creative for a linked terminal. It creates a short-lived
 terminal session named `claude-spinner-setup`, includes that session ID in the
 one-off decision, and closes the session before returning. It sends no
 prior-ad timing and does not call the impression or click endpoints, because
-Claude exposes no visibility signal for its own tip rotation.
-The printed configuration contains one plain string beginning `Sponsored:`;
+Claude exposes no visibility signal for its own spinner.
+The printed `spinnerVerbs` replacement contains one plain string beginning `Sponsored:`;
 it contains no decision ID, session ID, device ID, bearer token, or hidden
 tracking field.
 

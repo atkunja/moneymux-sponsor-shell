@@ -41,8 +41,8 @@ that exact commit. Replace the example version in both commands:
 ```sh
 git switch main
 git pull --ff-only origin main
-git tag --annotate v0.1.8 --message "Sponsor Shell v0.1.8"
-git push origin v0.1.8
+git tag --annotate v0.1.9 --message "Sponsor Shell v0.1.9"
+git push origin v0.1.9
 ```
 
 Do not move, recreate, or force-push a published release tag. npm package
@@ -55,15 +55,15 @@ the GitHub release both succeed, verify the published package without relying
 on a repository checkout:
 
 ```sh
-npm view @moneymux/sponsor-shell@0.1.8 version dist.integrity repository.url
-npm exec --yes --package=@moneymux/sponsor-shell@0.1.8 -- sponsor-shell --version
+npm view @moneymux/sponsor-shell@0.1.9 version dist.integrity repository.url
+npm exec --yes --package=@moneymux/sponsor-shell@0.1.9 -- sponsor-shell --version
 SPONSOR_SHELL_API_BASE_URL=https://staging.moneymux.com \
-  npm exec --yes --package=@moneymux/sponsor-shell@0.1.8 -- sponsor-shell doctor
+  npm exec --yes --package=@moneymux/sponsor-shell@0.1.9 -- sponsor-shell doctor
 ```
 
 Then use a staging-only terminal registration to exercise `link`, `status`, one
 interactive shell session, and `claude-spinner-setup`. Confirm the setup command
-prints a disclosed `spinnerTipsOverride` entry whose `tips` values are strings,
+prints a disclosed `spinnerVerbs` replacement whose `verbs` values are strings,
 the installed Claude Code accepts the merged settings without a validation
 error, its short-lived terminal session ends, and no impression or click is
 recorded. Finish with `unlink` and a second `doctor` run. Do not promote the

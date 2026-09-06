@@ -2,7 +2,14 @@
 
 All notable Sponsor Shell client and npm-launcher changes are recorded here.
 
-## Unreleased
+## 0.1.9 - 2026-09-05
+
+### Changed
+
+- `claude-spinner-setup` now replaces Claude Code's rotating action verbs with
+  one visibly disclosed `Sponsored:` campaign string. This makes the native
+  waiting-state placement deterministic after opt-in instead of adding one
+  occasional entry to Claude's separate tip rotation.
 
 ## 0.1.8 - 2026-09-05
 

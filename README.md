@@ -26,7 +26,7 @@ HTTP requests.
 The current staging workflow is:
 
 ```sh
-npm install --global @moneymux/sponsor-shell@0.1.8
+npm install --global @moneymux/sponsor-shell@0.1.9
 sponsor-shell login --api-base-url https://staging.moneymux.com
 ```
 
@@ -55,7 +55,7 @@ sponsor-shell bash
 When the wrapped command exits, Sponsor Shell preserves its exit status and
 closes the MoneyMux terminal session before removing the private tmux workspace.
 
-For Claude Code's disclosed, non-billable loading-tip placement, print the
+For Claude Code's disclosed, non-billable native spinner placement, print the
 settings fragment for the currently eligible campaign:
 
 ```sh
@@ -63,11 +63,11 @@ sponsor-shell claude-spinner-setup
 ```
 
 The command selects approved inventory but never reports a paid impression or
-click; Claude Code does not expose whether its own tip was visible. The lookup
+click; Claude Code does not expose whether its own spinner was visible. The lookup
 uses and immediately closes a short-lived MoneyMux terminal session so the
 decision follows the same eligibility contract as interactive placements.
-Its JSON uses Claude Code's documented string-array format and prefixes the tip
-itself with `Sponsored:`.
+Its JSON replaces Claude Code's action-verb rotation with a single sponsored
+string and prefixes that string with `Sponsored:`.
 
 The current source also offers opt-in protected harness sessions:
 
