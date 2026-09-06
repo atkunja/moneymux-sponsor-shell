@@ -4083,15 +4083,15 @@ mod tests {
     }
 
     #[test]
-    fn spinner_settings_use_claudes_string_array_schema() {
+    fn spinner_settings_use_claudes_documented_verb_schema() {
         let settings = claude_spinner_settings("Sponsored: Railway — https://railway.app");
-        let tips = settings["spinnerTipsOverride"]["tips"]
+        let verbs = settings["spinnerVerbs"]["verbs"]
             .as_array()
-            .expect("tips array");
+            .expect("verbs array");
 
-        assert_eq!(tips.len(), 1);
-        assert!(tips[0].is_string());
-        assert_eq!(tips[0], "Sponsored: Railway — https://railway.app");
+        assert_eq!(verbs.len(), 1);
+        assert!(verbs[0].is_string());
+        assert_eq!(verbs[0], "Sponsored: Railway — https://railway.app");
     }
 
     #[test]
